@@ -1,12 +1,12 @@
 import sys
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 import os
 
 # models: https://huggingface.co/yunyangx/efficient-track-anything/tree/main

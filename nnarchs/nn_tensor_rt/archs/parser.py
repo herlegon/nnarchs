@@ -5,13 +5,13 @@ from typing import Any, Literal
 from ...import_libs import trt
 TrtDType = trt.DataType
 
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     NnTensorrtArchitecture,
     detect_model_arch,
 )
-from pynnlib.nn_types import Hdtype, ShapeStrategy
-from pynnlib.model import TrtModel
-from pynnlib.logger import nnlogger
+from nnarchs.nn_types import Hdtype, ShapeStrategy
+from nnarchs.model import TrtModel
+from nnarchs.logger import nnlogger
 from ..trt_types import TrtEngine
 from ..inference.session import TRT_LOGGER
 
@@ -166,7 +166,7 @@ def parse(model: TrtModel) -> None:
     arch_name: str = model.arch_name
     _typing: Literal['', 'strong', 'weak'] = ''
     opset: int = 0
-    if model.metadata and "pynnlib" in model.metadata.get('generated_by', ""):
+    if model.metadata and "nnarchs" in model.metadata.get('generated_by', ""):
         _arch_name = model.metadata.get('arch_name', "")
         if _arch_name:
             arch_name = _arch_name

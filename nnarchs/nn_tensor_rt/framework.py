@@ -4,7 +4,7 @@ from .archs.load import load_tensorrt_engine
 from .archs.parser import get_tensorrt_model_arch
 from .archs.save import save_as
 from .inference.session import TensorRtSession
-from pynnlib.framework import (
+from nnarchs.framework import (
     NnFramework,
     NnFrameworkType,
 )

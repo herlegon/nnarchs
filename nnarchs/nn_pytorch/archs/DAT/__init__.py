@@ -1,15 +1,15 @@
 import math
 from typing import Literal
 
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.logger import is_debugging
-from pynnlib.model import PyTorchModel
+from nnarchs.logger import is_debugging
+from nnarchs.model import PyTorchModel
 from ...torch_types import StateDict
 from ..helpers import get_max_indice
 

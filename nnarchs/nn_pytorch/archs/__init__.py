@@ -11,10 +11,10 @@ from typing import Type
 from torch import nn
 
 from ..torch_types import StateDict
-from pynnlib.logger import is_debugging, nnlogger
-from pynnlib.architecture import NnPytorchArchitecture
-from pynnlib.model import PyTorchModel
-from pynnlib.import_libs import is_tensorrt_available
+from nnarchs.logger import is_debugging, nnlogger
+from nnarchs.architecture import NnPytorchArchitecture
+from nnarchs.model import PyTorchModel
+from nnarchs.import_libs import is_tensorrt_available
 from .helpers import parameters_to_args
 
 

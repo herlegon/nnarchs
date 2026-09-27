@@ -1,11 +1,11 @@
 from __future__ import annotations
 from pprint import pprint
 import torch
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     detect_model_arch,
     NnPytorchArchitecture,
 )
-from pynnlib.model import StateDict
+from nnarchs.model import StateDict
 
 
 

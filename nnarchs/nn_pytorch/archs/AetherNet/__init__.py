@@ -2,22 +2,22 @@ from warnings import warn
 
 import onnx
 import torch
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.model import PyTorchModel
-from pynnlib.nn_types import Hdtype, ShapeStrategy
+from nnarchs.model import PyTorchModel
+from nnarchs.nn_types import Hdtype, ShapeStrategy
 from ...torch_types import StateDict
 from ..helpers import (
     get_max_indice,
     get_nsequences,
 )
 
-from pynnlib.logger import is_debugging
+from nnarchs.logger import is_debugging
 
 
 def _to_onnx(

@@ -4,13 +4,13 @@ from hytils import (
 )
 from typing import Literal
 from warnings import warn
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
 )
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 from ...torch_types import StateDict
 from ..helpers import get_nsequences
 

@@ -35,7 +35,7 @@ def generate_metadata(
             time.strftime("%Y-%m-%dT%H:%M:%S%z", time.localtime()),
             '%Y-%m-%dT%H:%M:%S%z'
         ).isoformat(),
-        'generated_by': 'pynnlib'
+        'generated_by': 'nnarchs'
     }
 
     # Overwrite metadata by builtin

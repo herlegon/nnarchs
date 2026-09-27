@@ -17,12 +17,12 @@ import sys
 import time
 from typing import Any, Optional
 
-if not os.path.exists("pynnlib"):
+if not os.path.exists("nnarchs"):
     root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "pynnlib")):
+    if os.path.exists(os.path.join(root_path, "nnarchs")):
         sys.path.append(root_path)
 
-from pynnlib import (
+from nnarchs import (
     Hdtype,
     nnlib,
     NnModel,

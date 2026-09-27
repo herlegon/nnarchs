@@ -15,9 +15,9 @@ import torch
 from safetensors.torch import save_file
 
 from .load import load_state_dict
-from pynnlib.metadata import generate_metadata
+from nnarchs.metadata import generate_metadata
 if TYPE_CHECKING:
-    from pynnlib.model import PyTorchModel
+    from nnarchs.model import PyTorchModel
 
 
 def save_as(

@@ -1,13 +1,13 @@
 import torch
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.architecture import NnPytorchArchitecture
-from pynnlib.model import PyTorchModel
+from nnarchs.architecture import NnPytorchArchitecture
+from nnarchs.model import PyTorchModel
 from ..helpers import get_scale_and_out_nc
 
 

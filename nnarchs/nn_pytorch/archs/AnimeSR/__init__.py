@@ -1,12 +1,12 @@
 from hytils import red, yellow
 import math
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     InferType,
     Module,
     NnPytorchArchitecture,
     OnnxConv,
 )
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 
 
 

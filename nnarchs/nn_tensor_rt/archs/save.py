@@ -6,11 +6,11 @@ import os
 from pathlib import Path
 import zipfile
 
-from pynnlib.metadata import generate_metadata
+from nnarchs.metadata import generate_metadata
 
-from pynnlib.model import TrtModel
-from pynnlib.nn_types import NnFrameworkType
-from pynnlib.import_libs import trt
+from nnarchs.model import TrtModel
+from nnarchs.nn_types import NnFrameworkType
+from nnarchs.import_libs import trt
 _has_herlegon_system_ = False
 try:
     from system import (

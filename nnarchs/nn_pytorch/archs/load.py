@@ -5,7 +5,7 @@ from warnings import warn
 from safetensors.torch import load_file, safe_open
 import torch
 from .unpickler import RestrictedUnpickle
-from pynnlib.model import StateDict
+from nnarchs.model import StateDict
 
 
 

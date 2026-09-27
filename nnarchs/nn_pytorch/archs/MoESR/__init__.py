@@ -1,11 +1,11 @@
 from typing import Literal
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     TensorRTConv,
 )
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 from ...torch_types import StateDict
 from ..helpers import get_nsequences
 

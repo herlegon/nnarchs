@@ -1,14 +1,14 @@
 import math
 import re
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.model import PyTorchModel
-from pynnlib.nn_pytorch.torch_types import StateDict
+from nnarchs.model import PyTorchModel
+from nnarchs.nn_pytorch.torch_types import StateDict
 from ..helpers import get_nsequences
 
 

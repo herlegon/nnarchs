@@ -1,11 +1,11 @@
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 
 
 from ...torch_types import StateDict

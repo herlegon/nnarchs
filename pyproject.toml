@@ -1,5 +1,5 @@
 [project]
-name = "pynnlib"
+name = "nnarchs"
 description = "A library to load neural network models for SISR and videoSR"
 readme = "README.md"
 authors = [
@@ -11,6 +11,7 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "numpy",
@@ -20,7 +21,7 @@ dependencies = [
 dynamic = ["version"]
 
 [project.urls]
-Homepage = "https://github.com/JepEtau/pynnlib"
+Homepage = "https://github.com/herlegon/nnarchs"
 
 [build-system]
 requires = ["setuptools >= 80.9.0", "wheel"]
@@ -28,15 +29,15 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["pynnlib*"]
+include = ["nnarchs*"]
 exclude = ["tests*", "scripts"]
 
 [tool.setuptools.dynamic]
-version = { attr = "pynnlib.__version__" }
+version = { attr = "nnarchs.__version__" }
 
 [tool.black]
 line-length = 90
-target-version = ['py312']
+target-version = ['py314']
 
 [tool.ruff]
 exclude = ["*"]

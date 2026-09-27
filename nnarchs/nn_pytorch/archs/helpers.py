@@ -4,7 +4,7 @@ import glob
 import inspect
 import math
 from torch import Tensor
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 from ..torch_types import StateDict
 
 

@@ -186,11 +186,11 @@ class NnPytorchArchitecture(NnGenericArchitecture):
         if self.module.module_class is not None:
             return
 
-        pynnlib_dir = absolute_path(
+        nnarchs_dir = absolute_path(
             os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
         )
         arch_module_key: str = (
-            self._caller_dir[len(pynnlib_dir) + 1:].replace(os.sep, ".")
+            self._caller_dir[len(nnarchs_dir) + 1:].replace(os.sep, ".")
         )
 
         arch_module: Module = self.module

@@ -6,7 +6,7 @@ from .archs.load import load_state_dict
 from .archs.parser import get_torch_model_arch
 from .archs.save import save_as
 from .inference.session import PyTorchSession
-from pynnlib.framework import (
+from nnarchs.framework import (
     NnFramework,
     NnFrameworkType,
 )

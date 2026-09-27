@@ -9,17 +9,17 @@ import torch
 import torch.nn as nn
 from torch import Tensor, autocast
 from typing import TYPE_CHECKING
-from pynnlib import is_cuda_available
-from pynnlib.logger import nnlogger
-from pynnlib.model import PyTorchModel
-from pynnlib.architecture import SizeConstraint
-from pynnlib.nn_types import Hdtype
-from pynnlib.session import GenericSession
+from nnarchs import is_cuda_available
+from nnarchs.logger import nnlogger
+from nnarchs.model import PyTorchModel
+from nnarchs.architecture import SizeConstraint
+from nnarchs.nn_types import Hdtype
+from nnarchs.session import GenericSession
 from hytils import (
     yellow,
     red,
 )
-from pynnlib.utils.torch_tensor import (
+from nnarchs.utils.torch_tensor import (
     img_to_tensor,
     tensor_to_img,
     to_nchw,
@@ -27,7 +27,7 @@ from pynnlib.utils.torch_tensor import (
     to_hwc
 )
 if TYPE_CHECKING:
-    from pynnlib.architecture import InferType
+    from nnarchs.architecture import InferType
 from torch import Tensor
 
 

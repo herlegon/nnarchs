@@ -4,9 +4,9 @@ from hytils import (
 )
 import onnx
 from typing import Literal
-from pynnlib.logger import nnlogger
-from pynnlib.architecture import NnOnnxArchitecture, TensorRTConv
-from pynnlib.model import OnnxModel
+from nnarchs.logger import nnlogger
+from nnarchs.architecture import NnOnnxArchitecture, TensorRTConv
+from nnarchs.model import OnnxModel
 from ..inference.session import OnnxSession
 from .parser import parse
 

@@ -1,12 +1,12 @@
 import math
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 from ..helpers import (
     get_scale_and_out_nc,
     get_max_indice,

@@ -1,7 +1,7 @@
 from hytils import yellow
 import logging
 
-nnlogger: logging.Logger = logging.getLogger("pynnlib")
+nnlogger: logging.Logger = logging.getLogger("nnarchs")
 
 # Enable this to debug imports
 import sys

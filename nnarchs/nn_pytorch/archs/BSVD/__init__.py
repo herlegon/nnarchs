@@ -1,12 +1,12 @@
 from hytils import red, yellow
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     InferType,
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
 )
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 from ...torch_types import StateDict
 
 

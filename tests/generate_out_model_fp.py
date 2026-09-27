@@ -20,17 +20,17 @@ from warnings import warn
 
 
 # logging.config.fileConfig('config.ini')
-# logger = logging.getLogger("pynnlib")
+# logger = logging.getLogger("nnarchs")
 # logging.basicConfig(filename="logs.log", filemode="w", format="%(name)s → %(levelname)s: %(message)s")
 # logging.config.fileConfig('config.ini')
 start_time = time.time()
 
-if not os.path.exists("pynnlib"):
+if not os.path.exists("nnarchs"):
     root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "pynnlib")):
+    if os.path.exists(os.path.join(root_path, "nnarchs")):
         sys.path.append(root_path)
 
-from pynnlib import (
+from nnarchs import (
     get_supported_model_extensions,
     get_out_model_fp,
     nnlogger,
@@ -39,7 +39,7 @@ from pynnlib import (
     NnFrameworkType,
     ShapeStrategy,
 )
-print(f"pynnlib loaded in {(time.time() - start_time):.02f}s")
+print(f"nnarchs loaded in {(time.time() - start_time):.02f}s")
 
 
 def main():

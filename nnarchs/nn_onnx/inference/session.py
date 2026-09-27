@@ -8,11 +8,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from pynnlib.import_libs import is_cuda_available
-from pynnlib.model import OnnxModel
-from pynnlib.nn_types import Hdtype
-from pynnlib.session import GenericSession
-from pynnlib.utils.torch_tensor import (
+from nnarchs.import_libs import is_cuda_available
+from nnarchs.model import OnnxModel
+from nnarchs.nn_types import Hdtype
+from nnarchs.session import GenericSession
+from nnarchs.utils.torch_tensor import (
     HdtypeToNumpy,
     HdtypeToTorch,
     flip_r_b_channels,

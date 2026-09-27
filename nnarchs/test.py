@@ -1,4 +1,4 @@
-from pynnlib.model import NnModel
+from nnarchs.model import NnModel
 
 from hytils import path_split
 

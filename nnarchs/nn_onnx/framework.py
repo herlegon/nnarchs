@@ -5,7 +5,7 @@ from .archs.parser import get_onnx_model_arch
 from .archs.load import load_onnx_model
 from .archs.save import save_as
 from .inference.session import OnnxSession
-from pynnlib.framework import (
+from nnarchs.framework import (
     NnFramework,
     NnFrameworkType,
 )

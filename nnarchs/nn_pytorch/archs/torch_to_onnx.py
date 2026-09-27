@@ -10,13 +10,13 @@ from contextlib import nullcontext
 import onnx
 import torch
 
-from pynnlib.architecture import SizeConstraint
-from pynnlib.import_libs import is_cuda_available
-from pynnlib.nn_types import Hdtype, ShapeStrategy
-from pynnlib.utils.torch_tensor import HdtypeToTorch
+from nnarchs.architecture import SizeConstraint
+from nnarchs.import_libs import is_cuda_available
+from nnarchs.nn_types import Hdtype, ShapeStrategy
+from nnarchs.utils.torch_tensor import HdtypeToTorch
 from ..inference.session import PyTorchSession
 if TYPE_CHECKING:
-    from pynnlib.model import PyTorchModel
+    from nnarchs.model import PyTorchModel
 
 
 

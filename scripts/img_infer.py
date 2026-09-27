@@ -18,19 +18,19 @@ import time
 import cv2
 import numpy as np
 
-from pynnlib.utils.torch_tensor import TorchDtypeToHdtype
+from nnarchs.utils.torch_tensor import TorchDtypeToHdtype
 
 # logging.config.fileConfig('config.ini')
-# logger = logging.getLogger("pynnlib")
+# logger = logging.getLogger("nnarchs")
 # logging.basicConfig(filename="logs.log", filemode="w", format="%(name)s → %(levelname)s: %(message)s")
 # logging.config.fileConfig('config.ini')
 
-if not os.path.exists("pynnlib"):
+if not os.path.exists("nnarchs"):
     root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "pynnlib")):
+    if os.path.exists(os.path.join(root_path, "nnarchs")):
         sys.path.append(root_path)
 
-from pynnlib import (
+from nnarchs import (
     Hdtype,
     nnlogger,
     nnlib,
@@ -39,7 +39,7 @@ from pynnlib import (
     NnModelSession,
     NnFrameworkType,
 )
-from pynnlib.utils import absolute_path, path_split
+from nnarchs.utils import absolute_path, path_split
 
 
 

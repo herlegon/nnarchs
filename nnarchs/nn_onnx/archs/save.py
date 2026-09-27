@@ -8,7 +8,7 @@ from warnings import warn
 import onnx
 import os
 from pathlib import Path
-from pynnlib.model import OnnxModel
+from nnarchs.model import OnnxModel
 
 
 

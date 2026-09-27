@@ -1,4 +1,4 @@
-# pynnlib: Python Neural Network Library
+# Neural Network loader
 
 
 ## Parse models

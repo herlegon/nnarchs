@@ -6,19 +6,19 @@ import onnx
 import onnxruntime as ort
 from onnx import TensorProto
 
-from pynnlib.logger import nnlogger
-from pynnlib.nn_types import Hdtype, ShapeStrategy
+from nnarchs.logger import nnlogger
+from nnarchs.nn_types import Hdtype, ShapeStrategy
 nnlogger.debug(f"[I] ONNX runtime package loaded (version {ort.__version__})")
 
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidGraph
 from pathlib import Path
 from typing import Literal
 
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     NnOnnxArchitecture,
     detect_model_arch
 )
-from pynnlib.model import OnnxModel
+from nnarchs.model import OnnxModel
 from .ms_utils import (
     make_input_shape_fixed,
     fix_output_shapes

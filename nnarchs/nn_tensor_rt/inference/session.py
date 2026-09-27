@@ -1,15 +1,15 @@
 import numpy as np
 from pprint import pprint
-from pynnlib import is_tensorrt_available
-from pynnlib.nn_types import Hdtype
-from pynnlib.session import GenericSession
+from nnarchs import is_tensorrt_available
+from nnarchs.nn_types import Hdtype
+from nnarchs.session import GenericSession
 if is_tensorrt_available():
-    from pynnlib.import_libs import trt
+    from nnarchs.import_libs import trt
 
 import torch
-from pynnlib.logger import nnlogger
-from pynnlib.model import TrtModel
-from pynnlib.utils.torch_tensor import (
+from nnarchs.logger import nnlogger
+from nnarchs.model import TrtModel
+from nnarchs.utils.torch_tensor import (
     flip_r_b_channels,
     to_nchw,
     to_hwc,

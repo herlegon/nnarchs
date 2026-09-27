@@ -1,13 +1,13 @@
 import math
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.model import PyTorchModel
-from pynnlib.nn_pytorch.archs.RCAN import get_pixelshuffle_params
+from nnarchs.model import PyTorchModel
+from nnarchs.nn_pytorch.archs.RCAN import get_pixelshuffle_params
 from ...torch_types import StateDict
 from ..helpers import (
     get_nsequences,

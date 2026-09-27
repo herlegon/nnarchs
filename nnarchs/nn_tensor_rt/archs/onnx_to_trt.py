@@ -3,12 +3,12 @@ from hytils import red, yellow
 import numpy as np
 from pprint import pprint
 
-from pynnlib.logger import nnlogger
-from pynnlib.nn_types import Hdtype, ShapeStrategy
-from pynnlib.import_libs import trt
+from nnarchs.logger import nnlogger
+from nnarchs.nn_types import Hdtype, ShapeStrategy
+from nnarchs.import_libs import trt
 TrtDType = trt.DataType
 
-from pynnlib.model import OnnxModel
+from nnarchs.model import OnnxModel
 from ..inference.session import TRT_LOGGER
 from ..trt_types import TrtEngine
 

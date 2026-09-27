@@ -22,19 +22,19 @@ import sys
 import time
 from typing import Any
 
-from pynnlib.nn_types import Hdtype
+from nnarchs.nn_types import Hdtype
 
 # logging.config.fileConfig('config.ini')
-# logger = logging.getLogger("pynnlib")
+# logger = logging.getLogger("nnarchs")
 # logging.basicConfig(filename="logs.log", filemode="w", format="%(name)s → %(levelname)s: %(message)s")
 # logging.config.fileConfig('config.ini')
 
-if not os.path.exists("pynnlib"):
+if not os.path.exists("nnarchs"):
     root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "pynnlib")):
+    if os.path.exists(os.path.join(root_path, "nnarchs")):
         sys.path.append(root_path)
 
-from pynnlib import (
+from nnarchs import (
     nnlogger,
     nnlib,
     NnModel,

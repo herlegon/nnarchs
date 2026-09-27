@@ -2,14 +2,14 @@ from collections import OrderedDict
 import functools
 import math
 import re
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.model import PyTorchModel
+from nnarchs.model import PyTorchModel
 from ...torch_types import StateDict
 
 from ..helpers import get_max_indice

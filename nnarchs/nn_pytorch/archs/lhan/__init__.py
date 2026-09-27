@@ -1,13 +1,13 @@
-from pynnlib.architecture import (
+from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
     OnnxConv,
     SizeConstraint,
     TensorRTConv,
 )
-from pynnlib.logger import is_debugging
-from pynnlib.model import PyTorchModel
-from pynnlib.nn_pytorch.archs import contains_all_keys
+from nnarchs.logger import is_debugging
+from nnarchs.model import PyTorchModel
+from nnarchs.nn_pytorch.archs import contains_all_keys
 from ...torch_types import StateDict
 
 
