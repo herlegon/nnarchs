@@ -19,3 +19,8 @@ append `-f` or `--force` to overwrite existing engine
 - CUDA
 `python scripts.img_infer --img img.png --model 2x-LD-Anime-Compact.pth --cuda`
 
+
+
+## Installation
+`pip -r requirements.txt`
+https://github.com/ninja-build/ninja/releases
