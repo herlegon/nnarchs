@@ -2,15 +2,13 @@ from argparse import (
     ArgumentParser,
     RawTextHelpFormatter,
 )
+from pathlib import Path
 from hytils import (
-    absolute_path,
     lightcyan,
-    path_split,
     red,
     yellow,
 )
 import logging
-import logging.config
 import os
 from pprint import pprint
 import signal
@@ -32,9 +30,6 @@ from nnarchs import (
     nnlogger,
     nnlib,
     NnModel,
-    is_tensorrt_available,
-    get_supported_model_extensions,
-    NnFrameworkType,
     save_as,
     print_metadata,
 )
@@ -77,14 +72,13 @@ def main():
     args = parser.parse_args()
 
     # Determine output model path
-    model_fp: str = absolute_path(args.model)
+    model_fp: Path = Path(args.model).resolve()
     if args.overwrite:
-        out_model_fp = args.model
+        out_model_fp = model_fp
     elif args.out:
-        out_model_fp = args.out
+        out_model_fp = Path(args.out).resolve()
     else:
-        directory, basename, extension = path_split(args.model)
-        out_model_fp = os.path.join(directory, f"{basename}_metadata{extension}")
+        out_model_fp = model_fp.parent / f"{model_fp.stem}_metadata{model_fp.suffix}"
 
     # Debug
     debug: bool = args.debug

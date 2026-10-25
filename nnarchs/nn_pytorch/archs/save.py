@@ -5,6 +5,7 @@ from hytils import (
     absolute_path,
     is_access_granted,
     parent_directory,
+    red,
 )
 import json
 import os
@@ -22,19 +23,19 @@ if TYPE_CHECKING:
 
 def save_as(
     model: PyTorchModel,
-    filepath: str | Path | None = None,
-    directory: str | Path | None = None,
+    filepath: Path | None = None,
+    directory: Path | None = None,
     basename: str | None = None,
     ext: Literal['.pth', '.safetensors'] = '.pth',
-) -> str:
+) -> Path:
 
     if filepath is not None:
-        directory = parent_directory(filepath)
+        directory = filepath.parent
 
     else:
-        filepath: str = os.path.join(directory, f"{basename}{ext}")
+        filepath: Path = directory / f"{basename}{ext}"
 
-    directory = absolute_path(directory)
+    directory = directory.resolve()
     if not is_access_granted(directory, 'w'):
         raise PermissionError(f"{directory} is not writable")
 
@@ -42,7 +43,7 @@ def save_as(
 
     state_dict, _ = load_state_dict(model.filepath, device='cpu')
     if state_dict is None:
-        raise ValueError(f"{model.filepath} is not a supported model")
+        raise ValueError(red(f"Not a supported model") + f"{model.filepath}")
 
     if 'metadata' in state_dict:
         del state_dict['metadata']
@@ -56,7 +57,7 @@ def save_as(
             if isinstance(v, torch.Tensor) and not v.is_contiguous():
                 state_dict[k] = v.contiguous()
 
-        tmp_fp = filepath + ".tmp"
+        tmp_fp = filepath.with_name(filepath.name + ".tmp")
         save_file(state_dict, tmp_fp, metadata=metadata)
         os.replace(tmp_fp, filepath)
 

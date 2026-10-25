@@ -2,22 +2,19 @@ from argparse import (
     ArgumentParser,
     RawTextHelpFormatter
 )
+from pathlib import Path
+from pprint import pprint
 from hytils import (
-    absolute_path,
-    get_extension,
     lightcyan,
     lightgreen,
     red,
-    yellow,
 )
 import logging
-import logging.config
 import os
-from pprint import pprint
 import signal
 import sys
-import textwrap
 import time
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # logging.config.fileConfig('config.ini')
 # logger = logging.getLogger("nnarchs")
@@ -25,10 +22,10 @@ import time
 # logging.config.fileConfig('config.ini')
 start_time = time.time()
 
-if not os.path.exists("nnarchs"):
-    root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "nnarchs")):
-        sys.path.append(root_path)
+# if not os.path.exists("nnarchs"):
+#     root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
+#     if os.path.exists(os.path.join(root_path, "nnarchs")):
+#         sys.path.append(root_path)
 
 from nnarchs import (
     nnlogger,
@@ -110,9 +107,16 @@ def main():
         help="Enable debug mode for additional logging."
     )
 
-    arguments = parser.parse_args()
+    parser.add_argument(
+        "--dev",
+        action="store_true",
+        required=False,
+        help="Development."
+    )
 
-    debug: bool = arguments.debug
+    args = parser.parse_args()
+
+    debug: bool = args.debug
     if debug:
         # FileOutputHandler = logging.FileHandler('logs.log', mode='w')
         # nnlogger.addHandler(FileOutputHandler)
@@ -121,25 +125,25 @@ def main():
 
 
     filtered_exts: tuple[str] = get_supported_model_extensions()
-    if arguments.filter != '':
-        if arguments.filter == 'onnx':
+    if args.filter != '':
+        if args.filter == 'onnx':
             filtered_exts = get_supported_model_extensions(NnFrameworkType.ONNX)
-        elif arguments.filter == 'pytorch':
+        elif args.filter == 'pytorch':
             filtered_exts = get_supported_model_extensions(NnFrameworkType.PYTORCH)
-        elif arguments.filter in  ('trt', 'trtzip'):
+        elif args.filter in  ('trt', 'trtzip'):
             filtered_exts = get_supported_model_extensions(NnFrameworkType.TENSORRT)
         else:
-            filtered_exts = (arguments.filter)
+            filtered_exts = (args.filter)
     trt_extensions: tuple[int] = get_supported_model_extensions(NnFrameworkType.TENSORRT)
 
-    model_fp: str = arguments.model
-    if model_fp:
-        model_fp = absolute_path(model_fp)
-        ext = get_extension(model_fp)
+    # Parse a single model
+    model_fp: Path = Path(args.model).resolve()
+    if model_fp.is_file():
+        ext = model_fp.suffix
         if ext not in filtered_exts:
-            print(f"[E] Unsupported model: {arguments.model} cannot be loaded")
+            print(f"[E] Unsupported model: {args.model} cannot be loaded")
         if ext in trt_extensions and not is_tensorrt_available():
-            print(f"[E] Unsupported hardware: {arguments.model} cannot be loaded")
+            print(f"[E] Unsupported hardware: {args.model} cannot be loaded")
         device = 'cuda' if ext in trt_extensions else 'cpu'
 
         try:
@@ -152,11 +156,11 @@ def main():
                 f"\t\t({1000 * elapsed:.1f}ms)"
             )
             # Display metadata
-            if arguments.metadata:
+            if args.metadata:
                 print_metadata(model.metadata)
 
 
-            if arguments.verbose:
+            if args.verbose:
                 print("Model:")
                 print(model)
                 print("\nArchitecture:")
@@ -167,53 +171,81 @@ def main():
             print(red(e))
         return
 
-    ml_models_path: str = absolute_path(arguments.directory)
-    for root, _, files in os.walk(ml_models_path):
-        for f in sorted(files):
-            ext = get_extension(f)
-            if ext not in filtered_exts:
+    # Parse a directory
+    ml_models_path: Path = Path(args.directory).resolve()
+    print(lightcyan(f"Parse a directory: ") + f"{ml_models_path}")
+    if args.recursive:
+        paths = ml_models_path.rglob("*")
+    else:
+        paths = ml_models_path.iterdir()
+
+    model_paths: list[Path] = []
+    for path in sorted(paths):
+        if not path.is_file():
+            continue
+
+        ext = path.suffix
+        if ext not in filtered_exts:
+            continue
+
+        if ext in trt_extensions and not is_tensorrt_available():
+            print(f"[E] Unsupported hardware: {path} cannot be loaded")
+        model_paths.append(path)
+
+    print(lightcyan(f"Found candidates: ") + f"{len(model_paths)}")
+    parsed: int = 0
+    failed: list[Path] = []
+    for path in model_paths:
+        device = 'cuda' if ext in trt_extensions else 'cpu'
+
+        print(lightgreen(f"{path}"))
+        try:
+            start_time= time.time()
+            model: NnModel = nnlib.open(path, device)
+            if model is None:
+                failed.append(path)
                 continue
-            if ext in trt_extensions and not is_tensorrt_available():
-                print(f"[E] Unsupported hardware: {f} cannot be loaded")
 
-            filepath = os.path.join(root, f)
-            device = 'cuda' if ext in trt_extensions else 'cpu'
+            elapsed = time.time() - start_time
+            dtype: str = (
+                ", ".join(model.arch.dtypes)
+                if model.framework.type == NnFrameworkType.PYTORCH
+                else model.io_dtypes['input']
+            )
+            print(
+                f"    arch:", lightcyan(model.arch_name),
+                f"scale:", lightcyan(model.scale),
+                f"\n    in_dtype:", lightcyan(dtype),
+                f"\n    ({1000 * elapsed:.1f}ms)\n"
+            )
 
-            print(lightgreen(f"{f}"))
-            try:
-                start_time= time.time()
-                model: NnModel = nnlib.open(filepath, device)
-                if model is None:
-                    continue
-                elapsed = time.time() - start_time
-                dtype: str = (
-                    ", ".join(model.arch.dtypes)
-                    if model.framework.type == NnFrameworkType.PYTORCH
-                    else model.io_dtypes['input']
-                )
-                print(
-                    f"    arch:", lightcyan(model.arch_name),
-                    f"scale:", lightcyan(model.scale),
-                    f"\n    in_dtype:", lightcyan(dtype),
-                    f"\n    ({1000 * elapsed:.1f}ms)\n"
-                )
+            # Display metadata
+            if args.metadata:
+                print_metadata(model.metadata)
 
-                # Display metadata
-                if arguments.metadata:
-                    print_metadata(model.metadata)
+            if args.verbose or args.debug:
+                print("Model:")
+                print(model)
 
-                if arguments.verbose or arguments.debug:
-                    print("Model:")
-                    print(model)
-                if arguments.debug:
-                    print("Arch:")
-                    print(model.arch)
-            except Exception as e:
-                model: NnModel = nnlib.open(filepath, device)
-                print(e)
+            if args.debug:
+                print("Arch:")
+                print(model.arch)
 
-        if not arguments.recursive:
-            break
+            parsed += 1
+
+        except Exception as e:
+            failed.append(path)
+            if args.dev:
+                print(red(f"Exception:") + f"{e} (retry for debug)")
+                model: NnModel = nnlib.open(path, device)
+            else:
+                continue
+
+    print(lightcyan(f"Successfully parsed: ") + f"{parsed}/{len(model_paths)}")
+    if failed:
+        print(red(f"Failed to parse:\n    ") + f"{'\n    '.join([str(f) for f in failed])}")
+
+
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal.SIG_DFL)

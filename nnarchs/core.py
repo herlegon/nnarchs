@@ -60,8 +60,8 @@ class NnLib:
         )
 
 
-    def get_framework_from_extension(self, nn_model_path: str | Path) -> NnFramework:
-        extension = get_extension(nn_model_path)
+    def get_framework_from_extension(self, nn_model_path: Path) -> NnFramework:
+        extension = nn_model_path.suffix
         try:
             return self.frameworks[extensions_to_framework[extension]]
         except KeyError:
@@ -74,12 +74,12 @@ class NnLib:
 
     def open(
         self,
-        model_path: str,
+        model_path: Path,
         device: str = 'cpu',
     ) -> NnModel | None:
         """Open and parse a model and returns its parameters"""
-        model_path = absolute_path(model_path)
-        if not os.path.exists(model_path):
+        model_path = model_path.resolve()
+        if not model_path.exists():
             warn(red(f"[E] {model_path} does not exist"))
             return None
 
@@ -98,8 +98,8 @@ class NnLib:
         # Get the model arch
         model_arch = fwk.detect_model_arch(model_obj)
         if model_arch is None:
-            nnlogger.error(red(f"Not a supported model: {model_path}"))
-            return
+            raise ValueError(red(f"Not a supported model (reason: detection failed):") + f"{model_path}")
+
         nnlogger.debug(yellow(f"fwk={fwk.type.value}, arch={model_arch.name}"))
 
         model: NnModel = None
@@ -122,7 +122,7 @@ class NnLib:
                 metadata=metadata,
                 device=device,
             )
-            raise ValueError(f"Not a supported model: {model_path}. Reason: {str(e)}") from e
+            raise ValueError(red(f"Not a supported model:") + f" {model_path}. Reason: {str(e)}") from e
 
         if (
             model is not None
@@ -391,6 +391,9 @@ class NnLib:
         # Instantiate a new model
         trt_fwk = self.frameworks[NnFrameworkType.TENSORRT]
         model_arch = trt_fwk.detect_model_arch(trt_engine)
+        if model_arch is None:
+            raise ValueError(red(f"[TRT] Conversion failed for model: ") + f"{model.filepath}")
+
         trt_model = create_model(
             nn_model_path='',
             framework=trt_fwk,

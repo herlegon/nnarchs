@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+from pathlib import Path
 from pprint import pprint
 import re
 
@@ -26,15 +27,17 @@ except:
 
 
 def save_as(
-    model_fp: str,
+    model_fp: Path,
     model: NnModel,
     autonaming: bool = False,
 ) -> None:
-    directory, basename, ext = path_split(model_fp)
+    model_fp = model_fp.resolve()
+    basename = model_fp.stem
+    directory = model_fp.parent
     out_model_fp = model_fp if not autonaming else None
 
-    if not directory:
-        directory="./"
+    if not directory.is_dir():
+        directory = Path(".").resolve()
 
     if model.framework.type == NnFrameworkType.PYTORCH:
         # PyTorch, SafeTensors
@@ -43,7 +46,7 @@ def save_as(
             model=model,
             directory=directory,
             basename=basename,
-            ext=ext
+            ext=model_fp.suffix
         )
 
     elif model.framework.type == NnFrameworkType.ONNX:
@@ -76,7 +79,7 @@ def generate_out_model_fp(
     dtype: Hdtype = 'fp32',
     force_weak_typing: bool = False,
     device: str = 'cpu',
-    out_dir: str = "",
+    out_dir: Path = Path(),
     shape_strategy: ShapeStrategy = ShapeStrategy(type='dynamic'),
     suffix: str = "",
 ) -> str:
@@ -84,7 +87,7 @@ def generate_out_model_fp(
     returns an empty str if not supported or erroneous arg
     """
     out_model_fp: str = ""
-    basename = path_basename(model.filepath)
+    basename = model.filepath.stem
     suffix = f"_{suffix}" if suffix else ""
 
     dummy_model: NnModel
@@ -130,7 +133,7 @@ def generate_out_model_fp(
             framework=nnlib.frameworks[NnFrameworkType.TENSORRT],
             arch=NnTensorrtArchitecture,
             torch_arch=torch_arch,
-            filepath="",
+            filepath=Path(),
             device=device,
             dtypes=set([dtype]),
             force_weak_typing=force_weak_typing,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field, fields, is_dataclass
 import logging
+from pathlib import Path
 import onnx
 from typing import TYPE_CHECKING, Literal
 from hytils import arg_list
@@ -73,7 +74,7 @@ class GenericModel:
         field(default_factory=dict)
     )
 
-    filepath: str = None
+    filepath: Path = None
 
     # Use this device to parse a TensorRT model
     # TBD: for inference?
@@ -259,7 +260,7 @@ NnModel = OnnxModel | PyTorchModel | TrtModel
 
 
 def create_model(
-    nn_model_path:str,
+    nn_model_path: Path,
     framework: NnFramework,
     model_arch: NnArchitecture,
     model_obj: NnModelObject,

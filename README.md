@@ -19,6 +19,7 @@ append `-f` or `--force` to overwrite existing engine
 - CUDA
 `python scripts.img_infer --img img.png --model 2x-LD-Anime-Compact.pth --cuda`
 
+`python -m scripts.img_infer --img A:\imgs\infer\000.png --model A:\ml_models\2x-LD-Anime-Compact.pth --cuda --fp16`
 
 
 ## Installation

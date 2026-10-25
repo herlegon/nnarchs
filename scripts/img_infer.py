@@ -4,6 +4,8 @@ from argparse import (
 )
 from hytils import (
     absolute_path,
+    lightcyan,
+    lightgreen,
     path_split,
     red,
     yellow,
@@ -18,17 +20,13 @@ import time
 import cv2
 import numpy as np
 
-from nnarchs.utils.torch_tensor import TorchDtypeToHdtype
 
 # logging.config.fileConfig('config.ini')
 # logger = logging.getLogger("nnarchs")
 # logging.basicConfig(filename="logs.log", filemode="w", format="%(name)s → %(levelname)s: %(message)s")
 # logging.config.fileConfig('config.ini')
 
-if not os.path.exists("nnarchs"):
-    root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "nnarchs")):
-        sys.path.append(root_path)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from nnarchs import (
     Hdtype,
@@ -38,12 +36,12 @@ from nnarchs import (
     is_cuda_available,
     NnModelSession,
     NnFrameworkType,
+    TorchDtypeToHdtype,
 )
-from nnarchs.utils import absolute_path, path_split
 
 
 
-def load_image_fp32(filepath: Path | str) -> np.ndarray:
+def load_image_fp32(filepath: Path) -> np.ndarray:
     # Simplified function for testing purpose only
     try:
         img: np.ndarray = cv2.imdecode(
@@ -59,10 +57,10 @@ def load_image_fp32(filepath: Path | str) -> np.ndarray:
 
 
 
-def write_image(filepath: Path | str, img: np.ndarray) -> None:
+def write_image(filepath: Path, img: np.ndarray) -> None:
     # Simplified function for testing purpose only: save as 8-bit image
     # Overwrite input image
-    extension = os.path.splitext(filepath)[1]
+    extension = filepath.suffix
     if img.dtype == np.float32:
         img = img.clip(0., 1.)
         img *= 255.
@@ -217,7 +215,7 @@ Fallback to float if the execution provider does not support it
     # Open image as float, the inference session converts
     # the datatype as needed
     in_img: np.ndarray | None = None
-    in_img_fp = absolute_path(arguments.img)
+    in_img_fp = Path(arguments.img).resolve()
     try:
         in_img = load_image_fp32(in_img_fp)
     except:
@@ -231,8 +229,8 @@ Fallback to float if the execution provider does not support it
     device_for_parse: str = "cuda" if is_cuda_available() else 'cpu'
 
     # Open model file
-    model_filepath: str = absolute_path(arguments.model)
-    if not os.path.isfile(model_filepath):
+    model_filepath: Path = Path(arguments.model).resolve()
+    if not model_filepath.is_file():
         sys.exit(red(f"{model_filepath} does not exist."))
     start_time= time.time()
     try:
@@ -341,7 +339,6 @@ Fallback to float if the execution provider does not support it
         print(lightcyan(f"Inference:"), yellow(f"{1000 * elapsed:.1f}ms"))
 
     # Output image filepath:
-    dir, basename, ext = path_split(in_img_fp)
     suffix: str = arguments.suffix
     if not suffix:
         suffix_array: list[str] = [
@@ -351,7 +348,7 @@ Fallback to float if the execution provider does not support it
             TorchDtypeToHdtype[session.dtype],
         ]
         suffix = "_".join(suffix_array)
-    out_img_fp: str = os.path.join(dir, f"{basename}{suffix}{ext}")
+    out_img_fp: str = in_img_fp.parent / f"{in_img_fp.stem}{suffix}{in_img_fp.suffix}"
 
     print(lightcyan(f"Output image:"), f"{out_img_fp}")
 

@@ -23,7 +23,7 @@ from .model import (
 
 from .nn_onnx.inference.session import OnnxSession
 from .nn_pytorch.inference.session import PyTorchSession
-from .session import NnModelSession
+from .session import NnModelSession, TorchDtypeToHdtype
 
 try:
     from .nn_tensor_rt.inference.session import TensorRtSession
@@ -36,7 +36,6 @@ from .nn_types import (
     Hdtype,
     ShapeStrategy,
     ShapeStrategyType,
-    Hdtype,
 )
 from .architecture import (
     NnPytorchArchitecture,
@@ -87,6 +86,7 @@ __all__ = [
     "NnModelObject",
     "Hdtype",
     "HdtypeToTorch",
+    "TorchDtypeToHdtype",
 
     "NnModelSession",
     "OnnxSession",
