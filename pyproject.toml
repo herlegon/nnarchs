@@ -1,30 +1,45 @@
 [project]
 name = "nnarchs"
 description = "A library to load neural network models for SISR and videoSR"
-readme = "README.md"
 authors = [
-    {name = "Jep Etau"},
+    {name = "Jep Etau", email = "jep.etau@gmail.com"},
 ]
-requires-python = ">= 3.12"
+readme = "README.md"
+requires-python = ">= 3.14"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "numpy",
     "opencv-python",
     "hytils",
+    "hsys",
+    "hinstall",
 ]
 dynamic = ["version"]
+
+[project.optional-dependencies]
+# pip install .[release]
+release = [
+    "hytils @ git+https://github.com/herlegon/hytils.git",
+    "hsys @ git+https://github.com/herlegon/hsys.git",
+    "hinstall @ git+https://github.com/herlegon/hinstall.git",
+]
+# pip install -e .[dev]  +  pip install -e ../hytils ../hsys ../hinstall
+dev = [
+    "hytils",
+    "hsys",
+    "hinstall",
+]
 
 [project.urls]
 Homepage = "https://github.com/herlegon/nnarchs"
 
 [build-system]
-requires = ["setuptools >= 80.9.0", "wheel"]
+requires = ["setuptools >= 84.0.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
@@ -38,6 +53,11 @@ version = { attr = "nnarchs.__version__" }
 [tool.black]
 line-length = 90
 target-version = ['py314']
+
+[tool.mypy]
+python_version = "3.14"
+warn_return_any = true
+warn_unused_configs = true
 
 [tool.ruff]
 exclude = ["*"]
