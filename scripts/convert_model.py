@@ -2,6 +2,7 @@ from argparse import (
     ArgumentParser,
     RawTextHelpFormatter,
 )
+from pathlib import Path
 from hytils import (
     absolute_path,
     path_split,
@@ -16,11 +17,7 @@ import signal
 import sys
 import time
 from typing import Any, Optional
-
-if not os.path.exists("nnarchs"):
-    root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "nnarchs")):
-        sys.path.append(root_path)
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from nnarchs import (
     Hdtype,
@@ -300,8 +297,8 @@ def main():
     device = "cuda" if is_cuda_available() else 'cpu'
 
     # Open model file
-    model_filepath: str = absolute_path(arguments.model)
-    if not os.path.isfile(model_filepath):
+    model_filepath: Path = Path(arguments.model).resolve()
+    if not model_filepath.is_file():
         raise ValueError(red(f"[E] {model_filepath} is not a valid file"))
     model: NnModel = nnlib.open(model_filepath, device)
     print(lightgreen(f"[I] arch: {model.arch_name}"))

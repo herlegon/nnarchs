@@ -82,8 +82,8 @@ def generate_tensorrt_basename(
 
 def save_as(
     model: TrtModel,
-    filepath: str | Path | None = None,
-    directory: str | Path | None = None,
+    filepath: Path | None = None,
+    directory: Path | None = None,
     basename: str | None = None,
     suffix: str = "",
 ) -> bool:
@@ -103,7 +103,7 @@ def save_as(
         basename = generate_tensorrt_basename(model, basename)
         suffix = f"_{suffix}" if suffix else ""
         ext = '.trtzip'
-        filepath = os.path.join(directory, f"{basename}{suffix}{ext}")
+        filepath = directory / f"{basename}{suffix}{ext}"
 
     model.filepath = filepath
     if not is_access_granted(directory, 'w'):

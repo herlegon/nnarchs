@@ -17,7 +17,7 @@
 
 
 import os
-curdir = os.path.split(__file__)[0]
+curdir = Path(__file__).parent
 
 import torch
 from torch.utils.cpp_extension import load
@@ -25,8 +25,8 @@ from torch.utils.cpp_extension import load
 # if torch.cuda.is_available():
 
 #     TMPWrapper = load(name="TemporalMotionPropagation",
-#                        sources=[os.path.join(curdir, "tmpwrapper.cpp"),
-#                                 os.path.join(curdir, "tmp.cu")],
+#                        sources=[curdir / "tmpwrapper.cpp"),
+#                                 curdir / "tmp.cu")],
 #                        verbose=True)
 
 #     def tmp(feat, feat_pre, offsets, offsets_pre, distance, iters_t=30, sigma=30, iters_s=1, additional_jump=2):

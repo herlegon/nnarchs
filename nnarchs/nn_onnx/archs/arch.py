@@ -72,11 +72,11 @@ MODEL_ARCHITECTURES: tuple[NnOnnxArchitecture] = (
     NnOnnxArchitecture(
         name='Rife',
         category='Frame interpolation',
-        detect=is_model_rife,
+        detection_fct=is_model_rife,
     ),
     NnOnnxArchitecture(
         name='unknown',
-        detect=is_model_generic,
+        detection_fct=is_model_generic,
         # Allow conversion to tensorrt
         to_tensorrt=TensorRTConv(
             dtypes=('fp32', 'fp16', 'bf16'),

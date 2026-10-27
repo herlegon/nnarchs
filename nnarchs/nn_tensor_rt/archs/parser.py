@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from pprint import pprint
 from typing import Any, Literal
 
@@ -24,10 +25,10 @@ TrtDType_to_Hdtype: dict[TrtDType, str] = {
 
 
 
-def is_model_generic(model: str | TrtEngine) -> bool:
+def is_model_generic(model: Path | TrtEngine) -> bool:
     """Always onsider this model as a generic one
     """
-    if isinstance(model, str) and os.path.exists(model):
+    if isinstance(model, Path) and model.is_file():
         return True
     elif isinstance(model, TrtEngine):
         return True

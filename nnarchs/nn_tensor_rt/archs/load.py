@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from hytils import get_extension
 import json
 import os
@@ -7,7 +9,7 @@ import zipfile
 
 
 def load_tensorrt_engine(
-    model_path: str,
+    model_path: Path,
     device: str = 'cpu'
 ) -> tuple[bytes, dict[str, str]]:
     # We don't load engine in the cuda device, only in RAM,
@@ -17,11 +19,10 @@ def load_tensorrt_engine(
     metadata: dict[str, str] = {}
 
     # Load an engine from storage
-    if not os.path.exists(model_path):
+    if not model_path.is_file():
         return None, metadata
 
-    ext = get_extension(model_path)
-    if ext == '.trtzip':
+    if model_path.suffix == '.trtzip':
         with zipfile.ZipFile(model_path, 'r') as trtzip_file:
             engine_filename: str = next(
                 (s for s in trtzip_file.namelist() if s.endswith('.engine')),

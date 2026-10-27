@@ -1,5 +1,6 @@
 import math
 import os
+from pathlib import Path
 import torch
 from torch import Tensor
 import torch.nn as nn
@@ -72,17 +73,17 @@ class SpyNet(nn.Module):
         return_levels (list[int]): return flows of different levels. Default: [5].
     """
 
-    def __init__(self, load_path=None, return_levels=[5]):
+    def __init__(self, load_path: Path = None, return_levels=[5]):
         super(SpyNet, self).__init__()
         self.return_levels = return_levels
         self.basic_module = nn.ModuleList([BasicModule() for _ in range(6)])
         if load_path:
-            if not os.path.exists(load_path):
+            if not load_path.exists():
                 import requests
                 url = 'https://github.com/JingyunLiang/RVRT/releases/download/v0.0/spynet_sintel_final-3d2a1287.pth'
                 r = requests.get(url, allow_redirects=True)
                 print(f'downloading SpyNet pretrained model from {url}')
-                os.makedirs(os.path.dirname(load_path), exist_ok=True)
+                load_path.parent.mkdir(parents=True, exist_ok=True)
                 open(load_path, 'wb').write(r.content)
 
             self.load_state_dict(torch.load(load_path, map_location=lambda storage, loc: storage)['params'])

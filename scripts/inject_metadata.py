@@ -14,18 +14,13 @@ from pprint import pprint
 import signal
 import sys
 import time
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # logging.config.fileConfig('config.ini')
 # logger = logging.getLogger("nnarchs")
 # logging.basicConfig(filename="logs.log", filemode="w", format="%(name)s → %(levelname)s: %(message)s")
 # logging.config.fileConfig('config.ini')
 start_time = time.time()
-
-if not os.path.exists("nnarchs"):
-    root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "nnarchs")):
-        sys.path.append(root_path)
-
 from nnarchs import (
     nnlogger,
     nnlib,

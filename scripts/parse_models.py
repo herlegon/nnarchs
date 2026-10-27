@@ -22,11 +22,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 # logging.config.fileConfig('config.ini')
 start_time = time.time()
 
-# if not os.path.exists("nnarchs"):
-#     root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-#     if os.path.exists(os.path.join(root_path, "nnarchs")):
-#         sys.path.append(root_path)
-
 from nnarchs import (
     nnlogger,
     nnlib,

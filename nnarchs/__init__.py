@@ -1,6 +1,8 @@
 __version__ = "0.1.0"
 
 from .logger import nnlogger
+# nnlogger.setLevel("DEBUG")
+
 from .import_libs import *
 if not is_cuda_available():
     print("Error: torch and torchvision must be installed and a CUDA device is mandatory.")

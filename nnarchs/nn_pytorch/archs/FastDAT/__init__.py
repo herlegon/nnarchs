@@ -1,4 +1,5 @@
 import math
+from pprint import pprint
 from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
@@ -8,6 +9,7 @@ from nnarchs.architecture import (
 )
 from nnarchs.logger import is_debugging
 from nnarchs.model import PyTorchModel
+from nnarchs.nn_pytorch.archs import contains_all_keys
 from ...torch_types import StateDict
 from ..helpers import get_nsequences
 
@@ -22,6 +24,19 @@ sample_types: list[str] = [
 ]
 
 
+
+def detection_fct(state_dict: StateDict, keys: tuple[str | tuple[str]]) -> bool:
+    # Differentiate between fdat and fdat-rd
+    if (
+        contains_all_keys(state_dict=state_dict, keys=keys)
+        and "groups.0.blocks.2.attn.dictionary" not in state_dict
+    ):
+        return True
+
+    return False
+
+
+
 def parse(model: PyTorchModel) -> None:
     in_nc: int
     state_dict: StateDict = model.state_dict
@@ -29,7 +44,7 @@ def parse(model: PyTorchModel) -> None:
     in_nc = out_nc = 3
 
     # Detect the parameters from the state_dict
-    embed_dim, in_nc = state_dict["conv_first.weight"].shape[:2]
+    embed_dim, in_nc = state_dict["conv_first.1.weight"].shape[:2]
     out_nc: int = in_nc
     mid_dim: int = 64
 
@@ -110,9 +125,11 @@ def parse(model: PyTorchModel) -> None:
     )
 
 
+
 MODEL_ARCHITECTURES: tuple[NnPytorchArchitecture] = (
     NnPytorchArchitecture(
         name="FastDAT",
+        detection_fct=detection_fct,
         detection_keys=(
             "groups.0.blocks.0.n1.weight",
             "groups.0.blocks.0.ffn.fc1.weight",

@@ -2,6 +2,7 @@ from argparse import (
     ArgumentParser,
     RawTextHelpFormatter
 )
+from pathlib import Path
 from hytils import (
     get_extension,
     lightcyan,
@@ -17,6 +18,7 @@ import signal
 import sys
 import time
 from warnings import warn
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 
 # logging.config.fileConfig('config.ini')
@@ -24,11 +26,6 @@ from warnings import warn
 # logging.basicConfig(filename="logs.log", filemode="w", format="%(name)s → %(levelname)s: %(message)s")
 # logging.config.fileConfig('config.ini')
 start_time = time.time()
-
-if not os.path.exists("nnarchs"):
-    root_path = os.path.abspath(os.path.join(os.getcwd(), os.pardir))
-    if os.path.exists(os.path.join(root_path, "nnarchs")):
-        sys.path.append(root_path)
 
 from nnarchs import (
     get_supported_model_extensions,
@@ -220,7 +217,7 @@ def main():
     #         if ext in trt_extensions and not is_tensorrt_available():
     #             print(f"[E] Unsupported hardware: {f} cannot be loaded")
 
-    #         filepath = os.path.join(root, f)
+    #         filepath = root / f
     #         device = 'cuda' if ext in trt_extensions else 'cpu'
 
     #         print(lightgreen(f"{f}"))

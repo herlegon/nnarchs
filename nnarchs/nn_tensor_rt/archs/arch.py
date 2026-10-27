@@ -10,7 +10,7 @@ def is_model_generic(model) -> bool:
 MODEL_ARCHITECTURES: tuple[NnTensorrtArchitecture] = (
     NnTensorrtArchitecture(
         name='unknown',
-        detect=is_model_generic,
+        detection_fct=is_model_generic,
         parse=parse,
         create_session=create_session,
         dtypes=('fp32', 'fp16', 'bf16'),

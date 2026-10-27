@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from pprint import pprint
 from nnarchs.architecture import (
     Module,
@@ -32,7 +33,7 @@ def parse(model: PyTorchModel) -> None:
     scale: int = 1
 
     # use filename, I f*cking hate that
-    if "sr" in os.path.splitext(os.path.basename(model.filepath))[0]:
+    if "sr" in model.filepath.stem:
         scale = 4
 
     # for the other params, I don't want to detect them unless it's a good arch/model

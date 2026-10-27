@@ -73,6 +73,7 @@ def import_model_architectures() -> list[NnPytorchArchitecture]:
                 imported_archs.extend(module.MODEL_ARCHITECTURES)
         except:
             pass
+
     nnlogger.debug("[V] Imported PyTorch archs")
     for arch in imported_archs:
         nnlogger.debug(f"[V]\t{arch.name}")
@@ -125,10 +126,10 @@ for arch in MODEL_ARCHITECTURES:
 
     # By default use a simple detection function which checks
     # that the state_dict contains all detection_keys
-    arch.detect = (
+    arch.detection_fct = (
         partial(contains_all_keys, keys=arch.detection_keys)
-        if arch.detect is None
-        else partial(arch.detect, keys=arch.detection_keys)
+        if arch.detection_fct is None
+        else partial(arch.detection_fct, keys=arch.detection_keys)
     )
 
     if arch.create_session is None:

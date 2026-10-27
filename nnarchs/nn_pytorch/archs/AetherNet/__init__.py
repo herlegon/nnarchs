@@ -263,11 +263,11 @@ def parse(model: PyTorchModel) -> None:
 MODEL_ARCHITECTURES: tuple[NnPytorchArchitecture] = (
     NnPytorchArchitecture(
         name="AetherNet (Fused)",
-        detect=is_fused_arch,
+        detection_fct=is_fused_arch,
     ),
     NnPytorchArchitecture(
         name="AetherNet (Unfused)",
-        detect=is_unfused_arch,
+        detection_fct=is_unfused_arch,
     ),
 )
 

@@ -5,7 +5,7 @@
 
 
 import math
-import os
+from pathlib import Path
 from typing import Any
 import warnings
 
@@ -20,20 +20,20 @@ from ..cuda_ext import compile_cuda_ext
 
 
 
-# module_path = os.path.dirname(__file__)
+# module_path = Path(__file__).parent
 # deform_attn_ext = load(
 #     'deform_attn',
 #     sources=[
-#         os.path.join(module_path, 'deform_attn_ext.cpp'),
-#         os.path.join(module_path, 'deform_attn_cuda_pt110.cpp'),
-#         os.path.join(module_path, 'deform_attn_cuda_kernel.cu'),
+#         module_path / 'deform_attn_ext.cpp',
+#         module_path / 'deform_attn_cuda_pt110.cpp',
+#         module_path / 'deform_attn_cuda_kernel.cu',
 #     ],
 # )
 
 # Compile CUDA plugin
 _inited: bool = False
 deform_attn_ext = None
-op_dir: str = os.path.dirname(__file__)
+op_dir = Path(__file__).parent
 
 def compile_deform_attn_ext(verbose: bool = False):
     global _inited
@@ -45,9 +45,9 @@ def compile_deform_attn_ext(verbose: bool = False):
             deform_attn_ext = compile_cuda_ext(
                 "deform_attn_ext",
                 sources=(
-                    os.path.join(op_dir, "deform_attn_ext.cpp"),
-                    os.path.join(op_dir, "deform_attn_cuda_pt110.cpp"),
-                    os.path.join(op_dir, "deform_attn_cuda_kernel.cu"),
+                    op_dir / "deform_attn_ext.cpp",
+                    op_dir / "deform_attn_cuda_pt110.cpp",
+                    op_dir / "deform_attn_cuda_kernel.cu",
                 ),
                 verbose=verbose,
                 # extra_cuda_cflags=["--use_fast_math", "-O2"]

@@ -11,6 +11,7 @@
 import ctypes
 import importlib
 import inspect
+from pathlib import Path
 import numpy as np
 import os
 import sys
@@ -162,7 +163,7 @@ def construct_class_by_name(*args, class_name: str = None, **kwargs) -> Any:
 def get_module_dir_by_obj_name(obj_name: str) -> str:
     """Get the directory path of the module containing the given object name."""
     module, _ = get_module_from_obj_name(obj_name)
-    return os.path.dirname(inspect.getfile(module))
+    return Path(inspect.getfile(module)).parent
 
 
 def is_top_level_function(obj: Any) -> bool:
@@ -175,7 +176,7 @@ def get_top_level_function_name(obj: Any) -> str:
     # assert is_top_level_function(obj)
     module = obj.__module__
     if module == '__main__':
-        module = os.path.splitext(os.path.basename(sys.modules[module].__file__))[0]
+        module = Path(sys.modules[module].__file__).stem
     return module + "." + obj.__name__
 
 

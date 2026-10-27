@@ -1,5 +1,7 @@
 from __future__ import annotations
 import logging
+
+from hytils.p_print import lightcyan
 from hytils import (
     absolute_path,
     get_extension,
@@ -100,29 +102,29 @@ class NnLib:
         if model_arch is None:
             raise ValueError(red(f"Not a supported model (reason: detection failed):") + f"{model_path}")
 
-        nnlogger.debug(yellow(f"fwk={fwk.type.value}, arch={model_arch.name}"))
+        nnlogger.debug(lightcyan(f"model opened, detected ") + f"fwk={fwk.type.value}, arch={model_arch.name}")
 
         model: NnModel = None
-        try:
-            model = create_model(
-                nn_model_path=model_path,
-                framework=fwk,
-                model_arch=model_arch,
-                model_obj=model_obj,
-                metadata=metadata,
-                device=device,
-            )
-        except Exception as e:
-            nnlogger.debug(f"exception while creating a model: {str(e)}")
-            model = create_model(
-                nn_model_path=model_path,
-                framework=fwk,
-                model_arch=model_arch,
-                model_obj=model_obj,
-                metadata=metadata,
-                device=device,
-            )
-            raise ValueError(red(f"Not a supported model:") + f" {model_path}. Reason: {str(e)}") from e
+        # try:
+        model = create_model(
+            nn_model_path=model_path,
+            framework=fwk,
+            model_arch=model_arch,
+            model_obj=model_obj,
+            metadata=metadata,
+            device=device,
+        )
+        # except Exception as e:
+        #     nnlogger.debug(f"exception while creating a model: {str(e)}")
+        #     model = create_model(
+        #         nn_model_path=model_path,
+        #         framework=fwk,
+        #         model_arch=model_arch,
+        #         model_obj=model_obj,
+        #         metadata=metadata,
+        #         device=device,
+        #     )
+        #     raise ValueError(red(f"Not a supported model:") + f" {model_path}. Reason: {str(e)}") from e
 
         if (
             model is not None
@@ -262,7 +264,7 @@ class NnLib:
         optimization_level: int = 3,
         opset: int = 20,
         device: str = "cuda:0",
-        out_dir: str = None,
+        out_dir: Path = None,
         suffix: str = "",
         overwrite: bool = False,
     ) -> TrtModel | None:
@@ -331,8 +333,8 @@ class NnLib:
                 opset=opset,
             )
             trt_basename: str = generate_tensorrt_basename(dummy_model, basename)
-            filepath = os.path.join(out_dir, f"{trt_basename}{suffix}.trtzip")
-            if os.path.exists(filepath):
+            filepath = out_dir / f"{trt_basename}{suffix}.trtzip"
+            if filepath.exists():
                 if not overwrite:
                     nnlogger.debug(f"[I] Engine {filepath} already exists, do not convert")
                     return self.open(filepath, device)

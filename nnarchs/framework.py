@@ -43,7 +43,7 @@ class NnFramework:
         try:
             return self.detect_arch(model, self.architectures)
         except:
-            nnlogger.warning(f"[W] architecture not found for {model}")
+            nnlogger.warning(f"[W] architecture not found")
             if is_debugging():
                 return self.detect_arch(model, self.architectures)
         return None
@@ -94,9 +94,8 @@ def import_frameworks() -> dict[NnFrameworkType, NnFramework]:
     # Walk trough subdirectories
     detected_fwks: list[str] = []
     # Randomize for debugging purpose
-    random.shuffle(nn_frameworks)
+    # random.shuffle(nn_frameworks)
     for nn_fwk in nn_frameworks:
-
         nn_fwk_dir = os.path.join(nn_directory, nn_fwk)
         if not os.path.exists(nn_fwk_dir) or not os.path.isdir(nn_fwk_dir):
             continue

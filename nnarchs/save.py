@@ -108,7 +108,7 @@ def generate_out_model_fp(
             shape_strategy=shape_strategy,
         )
         onnx_basename: str = generate_onnx_basename(dummy_model, basename)
-        out_model_fp = os.path.join(out_dir, f"{onnx_basename}{suffix}.onnx")
+        out_model_fp = out_dir / f"{onnx_basename}{suffix}.onnx"
 
     elif to == NnFrameworkType.TENSORRT:
         torch_arch: PyTorchModel = model.arch
@@ -142,7 +142,7 @@ def generate_out_model_fp(
             opset=opset,
         )
         trt_basename: str = generate_tensorrt_basename(dummy_model, basename)
-        out_model_fp = os.path.join(out_dir, f"{trt_basename}{suffix}.trtzip")
+        out_model_fp = out_dir / f"{trt_basename}{suffix}.trtzip"
 
     else:
         raise ValueError(f"Cannot convert to {to.value}")

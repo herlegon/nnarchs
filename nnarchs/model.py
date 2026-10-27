@@ -290,7 +290,7 @@ def create_model(
 
     elif framework.type == NnFrameworkType.TENSORRT:
         if not device.startswith("cuda"):
-            nnlogger.debug("[W] wrong device to load a tensorRT model, use default cuda device")
+            nnlogger.debug("[W] wrong device selected to load a tensorRT model, use default cuda device")
             device = "cuda:0"
 
         model = TrtModel(
@@ -306,6 +306,7 @@ def create_model(
         raise ValueError("[E] Unknown framework")
 
     # Parse a model object to detect the model info: scale, dtype, ...
+    nnlogger.debug("Parse the model")
     if logging.getLevelName(nnlogger.getEffectiveLevel()) == "DEBUG":
         # Don't catch the exception when in development
         model_arch.parse(model)

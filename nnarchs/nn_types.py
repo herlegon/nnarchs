@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from enum import Enum
 import os
 import onnx
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import Literal, TypeAlias
 
 from .nn_pytorch.torch_types import StateDict
@@ -20,7 +20,7 @@ class NnFrameworkType(Enum):
 
 def filepath_to_fwk(filepath: str) -> NnFrameworkType:
     # Cannot use _value2member_map_ because of lower/upper case
-    value = PurePath(os.path.dirname(filepath)).parts[-1].replace('nn_', '')
+    value = Path(filepath).parent.name.replace("nn_", "")
     enum_dict = {t.value.lower(): t.value for t in NnFrameworkType}
     try:
         return NnFrameworkType._value2member_map_[enum_dict[value]]

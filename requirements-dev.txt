@@ -1,0 +1,4 @@
+-r requirements-common.txt
+-e ../hytils
+-e ../hsys
+-e ../hinstall

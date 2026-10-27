@@ -56,7 +56,7 @@ class NnGenericArchitecture:
 
     # Function used to detect arch,
     # can be customized for more scalability
-    detect: tuple[Callable] | Callable = None
+    detection_fct: tuple[Callable] | Callable = None
 
     """Parse a model object and update the model"""
     parse: ParseFunction = None
@@ -166,7 +166,7 @@ class NnPytorchArchitecture(NnGenericArchitecture):
     to_onnx: OnnxConv = None
     to_tensorrt: TensorRTConv = None
 
-    _caller_dir: str = ""
+    _caller_dir: Path = Path()
 
 
     def __post_init__(self):
@@ -177,7 +177,7 @@ class NnPytorchArchitecture(NnGenericArchitecture):
             caller_file = frame.f_back.f_back.f_globals.get('__file__', 'unknown')
         finally:
             del frame
-        self._caller_dir= absolute_path(path_split(caller_file)[0])
+        self._caller_dir = Path(caller_file).resolve().parent
 
 
     def import_module(self) -> None:
@@ -186,24 +186,21 @@ class NnPytorchArchitecture(NnGenericArchitecture):
         if self.module.module_class is not None:
             return
 
-        nnarchs_dir = absolute_path(
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir)
-        )
-        arch_module_key: str = (
-            self._caller_dir[len(nnarchs_dir) + 1:].replace(os.sep, ".")
-        )
+        nnarchs_dir = Path(__file__).resolve().parents[1]
+        arch_module_key: str = ".".join(self._caller_dir.relative_to(nnarchs_dir).parts)
 
         arch_module: Module = self.module
         if any(not x for x in (arch_module.file, arch_module.class_name)):
             print("[W] Missing module package or class_name")
 
-        nn_module_filepath = os.path.join(
-            self._caller_dir, "module", arch_module.file.replace(".", os.sep)
+        nn_module_filepath = self._caller_dir.joinpath(
+            "module", *arch_module.file.split(".")
         )
-        if not nn_module_filepath.endswith(".py"):
-            nn_module_filepath += ".py"
+        if nn_module_filepath.suffix != ".py":
+            nn_module_filepath = nn_module_filepath.with_suffix(".py")
 
         sys_module_key = f"{arch_module_key}.module.{arch_module.file}"
+        # nnlogger.info(f"{sys_module_key}, {nn_module_filepath}")
         module_spec = importlib_util.spec_from_file_location(
             name=sys_module_key,
             location=nn_module_filepath
@@ -250,20 +247,21 @@ def detect_model_arch(
     """Detect the model architecture and returns it"""
 
     for arch in architectures.values():
+        nnlogger.debug(f"Try with arch: {arch.name}")
 
-        if (detect_fct := arch.detect) is None:
+        if (detection := arch.detection_fct) is None:
             raise NotImplementedError(f"Detection function is not implemented for {arch.name}")
 
-        if isinstance(detect_fct, tuple | list):
-            # List of functions for detection
-            for func in detect_fct:
+        if isinstance(detection, tuple | list):
+            # List of keys for detection
+            for func in detection:
                 if func(model):
-                    nnlogger.debug(f"[V] detected arch: {arch.name}")
+                    nnlogger.debug(f"{arch.name}: used the list of keys")
                     return arch
         else:
             # Use a customized function for detection
-            if detect_fct(model):
-                nnlogger.debug(f"[V] detected arch: {arch.name}")
+            if detection(model):
+                nnlogger.debug(f"{arch.name}: used the custom method for detection")
                 return arch
 
     return None

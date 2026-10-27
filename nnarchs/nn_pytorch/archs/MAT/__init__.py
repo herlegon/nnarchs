@@ -158,7 +158,7 @@ MODEL_ARCHITECTURES: tuple[NnPytorchArchitecture] = (
             "synthesis.first_stage.conv_first.conv.resample_filter",
             "model.synthesis.first_stage.conv_first.conv.resample_filter",
         ),
-        detect=contains_any_keys,
+        detection_fct=contains_any_keys,
         module=Module(file="mat", class_name="MAT"),
         parse=parse,
         dtypes=set(['fp32', 'fp16']),

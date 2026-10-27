@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import warnings
 from torch.autograd import Function
 from torch.autograd.function import once_differentiable
@@ -24,7 +25,7 @@ def compile_fsa_ext(verbose: bool = False):
                     "fsa/vision.cpp"
                 ),
                 extra_include_paths=(
-                    os.path.join(os.path.dirname(__file__), "fsa"),
+                    Path(__file__).parent / "fsa",
                 ),
                 verbose=verbose,
                 # extra_cuda_cflags=["--use_fast_math", "-O2"],

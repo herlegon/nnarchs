@@ -97,7 +97,7 @@ def parse(model: PyTorchModel) -> None:
 MODEL_ARCHITECTURES: tuple[NnPytorchArchitecture] = (
     NnPytorchArchitecture(
         name="lhan",
-        detect=lhan_detect,
+        detection_fct=lhan_detect,
         detection_keys=(
             "groups.0.blocks.3.ffn.smix.weight",
             "groups.1.blocks.3.ffn.smix.weight",

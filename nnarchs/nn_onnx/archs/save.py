@@ -34,8 +34,8 @@ def generate_onnx_basename(
 
 def save_as(
     model: OnnxModel,
-    filepath: str | Path | None = None,
-    directory: str | Path | None = None,
+    filepath: Path | None = None,
+    directory: Path | None = None,
     basename: str | None = None,
     suffix: str = "",
 ) -> str:
@@ -53,7 +53,7 @@ def save_as(
         if not basename:
             return ""
         basename = generate_onnx_basename(model, basename)
-        filepath = os.path.join(directory, f"{basename}{suffix}.onnx")
+        filepath = directory / f"{basename}{suffix}.onnx"
 
     if not is_access_granted(directory, 'w'):
         raise PermissionError(f"{directory} is read only")
