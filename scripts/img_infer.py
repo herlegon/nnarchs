@@ -38,41 +38,12 @@ from nnarchs import (
     NnFrameworkType,
     TorchDtypeToHdtype,
 )
-
-
-
-def load_image_fp32(filepath: Path) -> np.ndarray:
-    # Simplified function for testing purpose only
-    try:
-        img: np.ndarray = cv2.imdecode(
-            np.fromfile(filepath, dtype=np.uint8),
-            cv2.IMREAD_UNCHANGED
-        )
-    except Exception as e:
-        raise RuntimeError(red(type(e)))
-    div: float = float(np.iinfo(img.dtype).max)
-    img = img.astype(np.float32)
-    img /= div
-    return img
-
-
-
-def write_image(filepath: Path, img: np.ndarray) -> None:
-    # Simplified function for testing purpose only: save as 8-bit image
-    # Overwrite input image
-    extension = filepath.suffix
-    if img.dtype == np.float32:
-        img = img.clip(0., 1.)
-        img *= 255.
-        img = img.astype(np.uint8)
-    if img.dtype != np.uint8:
-        raise ValueError(f"Unsupported input image dtype: {img.dtype}")
-    try:
-        _, img_buffer = cv2.imencode(f".{extension}", img)
-        with open(filepath, "wb") as buffered_writer:
-            buffered_writer.write(img_buffer)
-    except Exception as e:
-        raise RuntimeError(f"Failed to save image as {filepath}. {type(e)}")
+from denc import (
+    add_inference_arguments,
+    add_debug_arguments,
+    load_image_fp32,
+    write_image,
+)
 
 
 
@@ -99,79 +70,7 @@ def main():
         help="Append this text to the output image filename."
     )
 
-    parser.add_argument(
-        "-m",
-        "--model",
-        type=str,
-        default='',
-        required=True,
-        help="Model: PyTorch, ONNX, TensorRT."
-    )
-
-    parser.add_argument(
-        "--cuda",
-        "-cuda",
-        action="store_true",
-        required=False,
-        default=False,
-        help="""Use the first cuda device as the execution provider.
-Fallback to cpu if no CUDA device found.
-\n"""
-    )
-
-    parser.add_argument(
-        "--cpu",
-        "-cpu",
-        action="store_true",
-        required=False,
-        default=False,
-        help="""Use the CPU as the execution provider.
-Ignored if the model is a TensorRT engine."
-\n"""
-    )
-
-    parser.add_argument(
-        "--dml",
-        "-dml",
-        action="store_true",
-        required=False,
-        default=False,
-        help="""Use the DirectML as the execution provider.
-Ignored if the model is not an onnx model."
-\n"""
-    )
-
-    parser.add_argument(
-        "--fp32",
-        "-fp32",
-        action="store_true",
-        required=False,
-        default=True,
-        help="""Full precision (fp32)
-\n"""
-    )
-
-    parser.add_argument(
-        "--fp16",
-        "-fp16",
-        action="store_true",
-        required=False,
-        default=False,
-        help="""Half precision (fp16).
-Fallback to float if the execution provider does not support it
-\n"""
-    )
-
-    parser.add_argument(
-        "--bf16",
-        "-bf16",
-        action="store_true",
-        required=False,
-        default=False,
-        help="""Mixed precision (bf16).
-Fallback to float if the execution provider does not support it
-\n"""
-    )
+    add_inference_arguments(parser=parser)
 
     parser.add_argument(
         "-n",
@@ -190,12 +89,8 @@ Fallback to float if the execution provider does not support it
         help="Print the model info"
     )
 
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        required=False,
-        help="Used to debug"
-    )
+    add_debug_arguments(parser=parser)
+
 
     parser.add_argument(
         "--profiling",

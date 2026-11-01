@@ -93,6 +93,7 @@ class PyTorchSession(GenericSession):
         **kwargs,
     ) -> None:
         # module: nn.Module = self.module
+        # Load a pytorch module in the device
         super().initialize(device=device, dtype=dtype)
 
         if not is_cuda_available() or dtype not in self.model.arch.dtypes:

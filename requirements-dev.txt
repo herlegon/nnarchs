@@ -2,3 +2,4 @@
 -e ../hytils
 -e ../hsys
 -e ../hinstall
+-e ../denc

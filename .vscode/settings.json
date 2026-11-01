@@ -30,7 +30,10 @@
         ]
     },
     "python.analysis.extraPaths": [
-        "../hytils"
+        "../hytils",
+        "../hsys",
+        "../hinstall",
+        "../denc",
     ],
     "python-envs.pythonProjects": [
         {
