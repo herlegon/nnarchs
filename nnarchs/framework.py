@@ -33,7 +33,7 @@ class NnFramework:
     load: Callable[[str], list[Any, dict[str, str]]] = None
 
     detect_arch: GetModelArchFct = None
-    save: Callable[[NnModel, Path | str, str, str], bool] = None
+    save: Callable[[NnModel, Path, str, str], bool] = None
     Session: NnModelSession = None
 
 

@@ -12,12 +12,7 @@ from .core import nn_lib as nnlib
 
 from .model import NnModel, OnnxModel, PyTorchModel, TrtModel
 from .framework import NnFrameworkType
-from hytils import (
-    get_extension,
-    path_split,
-    path_basename,
-    red,
-)
+from hytils import red
 try:
     from .nn_tensor_rt.archs.save import generate_tensorrt_basename
 except:
@@ -68,7 +63,7 @@ def save_as(
         )
 
     else:
-        raise ValueError(get_extension(f"Unknown framework: {model.framework.type}"))
+        raise ValueError(f"Unknown framework: {model.framework.type}")
 
 
 

@@ -237,7 +237,7 @@ class NnLib:
         )
 
         # Save this model
-        filepath: str = ""
+        filepath: Path = Path()
         if out_dir:
             basename = path_basename(model.filepath)
             filepath = onnx_fwk.save(
@@ -312,7 +312,7 @@ class NnLib:
 
         # Verify if tensor engine already exists
         # Remove suffixes from ONNX basename
-        basename = path_basename(model.filepath)
+        basename = model.filepath.stem
         if model.fwk_type == NnFrameworkType.ONNX:
             opset = model.opset
             basename = re.sub(r"_op\d{1,2}", '', basename)

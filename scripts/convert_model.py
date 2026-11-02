@@ -4,8 +4,6 @@ from argparse import (
 )
 from pathlib import Path
 from hytils import (
-    absolute_path,
-    path_split,
     red,
     yellow,
     lightgreen,
@@ -93,7 +91,7 @@ def convert_to_tensorrt(
         optimization_level=opt_level,
         opset=arguments.opset,
         device=device,
-        out_dir=path_split(model.filepath)[0],
+        out_dir=model.filepath.parent,
         overwrite=force,
     )
 
@@ -192,7 +190,7 @@ def main():
         "--opset",
         type=int,
         required=False,
-        default=20,
+        default=23,
         help="""ONNX opset version to use when exporting from PyTorch.
 \n"""
     )

@@ -97,7 +97,6 @@ def save_as(
         directory = parent_directory(filepath)
 
     else:
-        directory = str(directory) if isinstance(directory, Path) else directory
         if basename is None or not basename:
             return False
         basename = generate_tensorrt_basename(model, basename)

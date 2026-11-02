@@ -2,7 +2,6 @@ from __future__ import annotations
 from pprint import pprint
 from hytils import (
     is_access_granted,
-    parent_directory,
 )
 from warnings import warn
 import onnx
@@ -45,11 +44,10 @@ def save_as(
         return ""
 
     if filepath is not None:
-        directory = parent_directory(filepath)
+        directory = filepath.parent
 
     else:
         # Generate filepath based on args
-        directory = str(directory) if isinstance(directory, Path) else directory
         if not basename:
             return ""
         basename = generate_onnx_basename(model, basename)

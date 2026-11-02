@@ -45,7 +45,6 @@ def onnx_to_trt_engine(
 
     print(f"[V] Start converting to TRT, request fp16={has_fp16}, bf16={has_bf16}")
     network_flags = 0
-    network_flags = 1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)
     if use_strongly_typed:
         network_flags += 1 << int(trt.NetworkDefinitionCreationFlag.STRONGLY_TYPED)
 
