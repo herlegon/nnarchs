@@ -23,10 +23,10 @@ def parse(model: PyTorchModel) -> None:
         in_nc=in_nc,
         out_nc=in_nc,
 
-        # dim=dim,
-        # config=config,
-        # drop_path_rate=0.,
-        # input_resolution=256
+        conf_thresh=0.6,
+        min_support=1,
+        gate_slope=12.0,
+        count_slope=4.0
     )
 
 
@@ -39,7 +39,7 @@ MODEL_ARCHITECTURES: tuple[NnPytorchArchitecture] = (
             "aligner.blocks.0.conv0.0.0.weight",
             "conf_head.net.0.0.weight",
         ),
-        module=Module(file="temporalfix", class_name="TemporalFix"),
+        module=Module(file="temporalfix_arch", class_name="TemporalFix"),
         parse=parse,
         dtypes=('fp32', 'fp16', 'bf16'),
         size_constraint=SizeConstraint(min=(8, 8), modulo=2),
