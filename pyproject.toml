@@ -16,6 +16,9 @@ dependencies = [
     "numpy",
     "opencv-python",
     "safetensors",
+    "onnx",
+    "onnxruntime",
+    # "onnxruntime-directml",
 
     "hytils",
     "hsys",
