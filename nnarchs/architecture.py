@@ -15,9 +15,8 @@ try:
 except:
     torch_device = str
 from torch import nn as nn
-from typing import Any, Literal, Optional, overload
+from typing import Any, Optional, overload
 from .model import (
-    OnnxModel,
     NnModel,
     PyTorchModel,
     SizeConstraint,
@@ -28,23 +27,12 @@ from .nn_types import (
     NnArchitectureType,
     ShapeStrategy,
     ShapeStrategyType,
+    InferType,
 )
 from .session import NnModelSession
 
 
 ParseFunction = Callable[[NnModel], None]
-
-
-@dataclass(slots=True)
-class InferType:
-    type: Literal[
-        'simple',
-        'inpaint',
-        'temporal',
-        'optical_flow'
-    ] = 'simple'
-    inputs: int = 1
-    outputs: int = 1
 
 
 

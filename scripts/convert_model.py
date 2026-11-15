@@ -342,7 +342,7 @@ def main():
             dtype=c_dtype,
             shape_strategy=shape_strategy,
             device=device,
-            out_dir=path_split(model.filepath)[0],
+            out_dir=model.filepath.parent,
         )
         elapsed_time = time.time() - start_time
         print(lightgreen(f"[I] Onnx model saved as {onnx_model.filepath}"))

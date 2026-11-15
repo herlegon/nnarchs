@@ -8,6 +8,20 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
+import functools
+import warnings
+
+def _quiet_trace(fn):
+    """Silence TracerWarning for helpers whose Python branches only depend on shapes/constants."""
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if not torch.jit.is_tracing():
+            return fn(*args, **kwargs)   # no overhead at runtime
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", category=torch.jit.TracerWarning)
+            return fn(*args, **kwargs)
+    return wrapper
+
 
 _BACKWARP_GRID_CACHE: dict[tuple[int, int, str, int | None, torch.dtype], Tensor] = {}
 _LOWPASS_WEIGHT_CACHE: dict[tuple[int, str, int | None, torch.dtype], Tensor] = {}
@@ -20,15 +34,18 @@ def _make_base_grid(
     device: torch.device,
     dtype: torch.dtype,
 ) -> Tensor:
-    horizontal = ((torch.arange(w, device=device, dtype=dtype) + 0.5) * (2.0 / w) - 1.0)
-    vertical = ((torch.arange(h, device=device, dtype=dtype) + 0.5) * (2.0 / h) - 1.0)
+    ys = torch.arange(h, device=device, dtype=torch.float32)
+    xs = torch.arange(w, device=device, dtype=torch.float32)
+
+    horizontal = ((xs + 0.5) * (2.0 / w) - 1.0)
+    vertical = ((ys + 0.5) * (2.0 / h) - 1.0)
 
     horizontal = horizontal.view(1, 1, 1, w).expand(1, -1, h, -1)
     vertical = vertical.view(1, 1, h, 1).expand(1, -1, -1, w)
 
-    return torch.cat((horizontal, vertical), dim=1)
+    return torch.cat((horizontal, vertical), dim=1).to(dtype)
 
-
+@_quiet_trace
 def _make_lowpass_weight_5x5(
     channels: int,
     *,
@@ -59,14 +76,14 @@ def _get_lowpass_weight_5x5(
         _LOWPASS_WEIGHT_CACHE[key] = weight
     return weight
 
-
+@_quiet_trace
 def _needs_downsample_prefilter(
     in_hw: tuple[int, int],
     out_hw: tuple[int, int],
 ) -> bool:
     return out_hw[0] < in_hw[0] or out_hw[1] < in_hw[1]
 
-
+@_quiet_trace
 def _lowpass_before_downsample(
     x: Tensor,
     size: tuple[int, int],
@@ -115,13 +132,17 @@ def _flow_to_grid_cached(
 
     key = (h, w, flow.device.type, flow.device.index, grid_dtype)
 
-    base = _BACKWARP_GRID_CACHE.get(key)
-    if base is None:
+    if torch.jit.is_tracing():
         base = _make_base_grid(h, w, device=flow.device, dtype=grid_dtype)
-        _BACKWARP_GRID_CACHE[key] = base
+    else:
+        key = (h, w, flow.device.type, flow.device.index, grid_dtype)
+        base = _BACKWARP_GRID_CACHE.get(key)
+        if base is None:
+            base = _make_base_grid(h, w, device=flow.device, dtype=grid_dtype)
+            _BACKWARP_GRID_CACHE[key] = base
 
-    flow_x = flow[:, 0:1] * (2.0 / float(w))
-    flow_y = flow[:, 1:2] * (2.0 / float(h))
+    flow_x = flow[:, 0:1] * (2.0 / w)
+    flow_y = flow[:, 1:2] * (2.0 / h)
     grid = base + torch.cat((flow_x, flow_y), dim=1)
     return grid.permute(0, 2, 3, 1)
 
@@ -157,21 +178,21 @@ def warp(
         align_corners=False,
     )
 
-
+@_quiet_trace
 def _scaled_hw(hw: tuple[int, int], scale: int) -> tuple[int, int]:
     if scale <= 1:
         return hw
     h, w = hw
     return ((h + scale - 1) // scale, (w + scale - 1) // scale)
 
-
+@_quiet_trace
 def _resize_like(x: Tensor, size: tuple[int, int]) -> Tensor:
     if x.shape[-2:] == size:
         return x
     x = _lowpass_before_downsample(x, size)
     return F.interpolate(x, size=size, mode="bilinear", align_corners=False)
 
-
+@_quiet_trace
 def _resize_flow(flow: Tensor, size: tuple[int, int]) -> Tensor:
     if flow.shape[-2:] == size:
         return flow
@@ -181,11 +202,12 @@ def _resize_flow(flow: Tensor, size: tuple[int, int]) -> Tensor:
 
     flow = _lowpass_before_downsample(flow, size)
     flow = F.interpolate(flow, size=size, mode="bilinear", align_corners=False)
-    flow_x = flow[:, 0:1] * (float(new_w) / float(old_w))
-    flow_y = flow[:, 1:2] * (float(new_h) / float(old_h))
+    flow_x = flow[:, 0:1] * (new_w / old_w)
+    flow_y = flow[:, 1:2] * (new_h / old_h)
     return torch.cat((flow_x, flow_y), dim=1)
 
 
+@_quiet_trace
 def _expand_scalar_map(
     x: Tensor,
     size: tuple[int, int],
@@ -193,6 +215,11 @@ def _expand_scalar_map(
     if x.shape[-2:] == size:
         return x
     return x[:, :, :1, :1].expand(-1, -1, size[0], size[1])
+
+
+@_quiet_trace
+def _hw_differs(x: Tensor, hw: tuple[int, int]) -> bool:
+    return tuple(x.shape[-2:]) != tuple(hw)
 
 
 def conv(
@@ -293,7 +320,7 @@ class MCBlock(nn.Module):
         stage_hw = x.shape[-2:]
 
         if flow is not None:
-            if flow.shape[-2:] != stage_hw:
+            if not torch.jit.is_tracing() and _hw_differs(flow, stage_hw):
                 raise ValueError(
                     f"MCBlock flow size mismatch: x={stage_hw}, flow={flow.shape[-2:]}"
                 )
@@ -449,7 +476,7 @@ class PairwiseCenterAligner(nn.Module):
             f_support_i = f_support_pyr[stage_idx].reshape(b * s, 4, stage_hw[0], stage_hw[1])
             delta_t_i = delta_t_pyr[stage_idx].reshape(b * s, 1, stage_hw[0], stage_hw[1])
 
-            if flow is not None and flow.shape[-2:] != stage_hw:
+            if flow is not None and _hw_differs(flow, stage_hw):
                 flow = _resize_flow(flow, stage_hw)
                 conf_logit = _resize_like(conf_logit, stage_hw)
                 latent = _resize_like(latent, stage_hw)
@@ -491,7 +518,7 @@ class PairwiseCenterAligner(nn.Module):
         if flow is None or conf_logit is None:
             raise RuntimeError("Internal error: flow/conf_logit was not initialized")
 
-        if flow.shape[-2:] != full_hw:
+        if _hw_differs(flow, full_hw):
             flow = _resize_flow(flow, full_hw)
             conf_logit = _resize_like(conf_logit, full_hw)
 
@@ -648,37 +675,47 @@ class TemporalFix(nn.Module):
         self.conf_head = ConfidenceHead(hidden=32)
 
 
-    def _reshape_input(
-        self, x: Tensor
-    ) -> tuple[Tensor, int, int, int]:
-        if x.ndim != 5:
-            raise ValueError(f"Expected Bx7x3xHxW input, got {x.shape}")
-
-        frames = x
-        b, t, c, h, w = frames.shape
-        if t != 7 or c != 3:
-            raise ValueError(f"Expected Bx7x3xHxW, got {frames.shape}")
-
-        return frames, b, h, w
+    def _reshape_input(self, x: Tensor) -> tuple[Tensor, int, int, int]:
+        b, t, c, h, w = x.shape
+        if not torch.jit.is_tracing():
+            if x.ndim != 5:
+                raise ValueError(f"Expected Bx7x3xHxW input, got {tuple(x.shape)}")
+            if t != 7 or c != 3:
+                raise ValueError(f"Expected Bx7x3xHxW, got {tuple(x.shape)}")
+        return x, b, h, w
 
 
-    def forward(self, x: Tensor) -> Tensor:
+    def encode_frame(self, frame: Tensor) -> Tensor:
+        """Encode a single frame (B,3,H,W) -> (B,4,H,W). Call once per incoming frame."""
+        return self.encode(frame)
+
+
+    def forward(self, x: Tensor, feats: Tensor | None = None) -> Tensor:
+        """
+        x:     B x 7 x 3 x H x W, order [0, -3, -2, -1, +1, +2, +3]  (center first)
+        feats: B x 7 x 4 x H x W, same order, optional (precomputed / cached features)
+        """
         frames, b, h, w = self._reshape_input(x)
 
-        if self.fixed_hw is not None and (h, w) != tuple(self.fixed_hw):
-            raise ValueError(
-                f"Input size {(h, w)} does not match fixed_hw={self.fixed_hw}"
-            )
+        if not torch.jit.is_tracing():
+            if self.fixed_hw is not None and (h, w) != tuple(self.fixed_hw):
+                raise ValueError(
+                    f"Input size {(h, w)} does not match fixed_hw={self.fixed_hw}"
+                )
 
-        center = frames[:, 3]
+        center = frames[:, 0]            # view, no copy
+        supports = frames[:, 1:]         # view, no copy
 
-        feats = self.encode(frames.reshape(b * 7, 3, h, w)).reshape(b, 7, 4, h, w)
-        center_feat = feats[:, 3]
+        if feats is None:
+            # No cached features: encode all 7 frames in one batched pass
+            feats = self.encode(frames.reshape(b * 7, 3, h, w)).reshape(b, 7, 4, h, w)
 
-        frame_indices = (0, 1, 2, 4, 5, 6)
-        supports = frames[:, frame_indices]
-        support_feats = feats[:, frame_indices]
-        num_supports = supports.shape[1]
+        elif not torch.jit.is_tracing() and tuple(feats.shape) != (b, 7, 4, h, w):
+            raise ValueError(f"Expected feats {(b, 7, 4, h, w)}, got {tuple(feats.shape)}")
+
+        center_feat = feats[:, 0]        # view, no copy
+        support_feats = feats[:, 1:]     # view, no copy
+        num_supports = 6
 
         delta_t = self._temporal_values.to(device=center.device, dtype=center.dtype).expand(
             b, -1, -1, h, w

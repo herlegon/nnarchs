@@ -1,11 +1,8 @@
 from __future__ import annotations
 from pprint import pprint
-from hytils import (
-    is_access_granted,
-)
+from hytils import is_access_granted
 from warnings import warn
 import onnx
-import os
 from pathlib import Path
 from nnarchs.model import OnnxModel
 

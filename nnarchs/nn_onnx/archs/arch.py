@@ -8,7 +8,10 @@ from nnarchs.logger import nnlogger
 from nnarchs.architecture import NnOnnxArchitecture, TensorRTConv
 from nnarchs.model import OnnxModel
 from ..inference.session import OnnxSession
-from .parser import parse
+from .parser import (
+    parse_onnx_model,
+    parse_temporal_onnx_model,
+)
 
 
 def is_model_bgd_removal(model: onnx.ModelProto, item: Literal['node', 'output'], keys: tuple[str]) -> bool:
@@ -56,7 +59,16 @@ def is_model_rife(model: onnx.ModelProto) -> bool:
 def is_model_generic(model: onnx.ModelProto) -> bool:
     graph = model.graph
     if len(graph.input) != 1 or len(graph.output) != 1:
-        nnlogger.debug("[E] Model with more than single i/o is not supported")
+        nnlogger.debug("[D] Not a SISR model")
+        return False
+
+    return True
+
+
+def is_model_temporal(model: onnx.ModelProto) -> bool:
+    graph = model.graph
+    if len(graph.input) < 2:
+        nnlogger.debug("[D] Temporal model")
         return False
 
     return True
@@ -83,6 +95,17 @@ MODEL_ARCHITECTURES: tuple[NnOnnxArchitecture] = (
             weak_typing=False,
             shape_strategy_types=('dynamic', 'fixed', 'static'),
         ),
+    ),
+    NnOnnxArchitecture(
+        name='unknown',
+        detection_fct=is_model_temporal,
+        parse=parse_temporal_onnx_model,
+        # Allow conversion to tensorrt
+        to_tensorrt=TensorRTConv(
+            dtypes=('fp32', 'fp16', 'bf16'),
+            weak_typing=False,
+            shape_strategy_types=('dynamic', 'fixed', 'static'),
+        ),
     )
 )
 
@@ -90,7 +113,7 @@ MODEL_ARCHITECTURES: tuple[NnOnnxArchitecture] = (
 for arch in MODEL_ARCHITECTURES:
     arch.update(dict(
         type=arch.name,
-        parse=partial(parse, scale=arch.scale),
+        parse=partial(parse_onnx_model, scale=arch.scale) if arch.parse is None else arch.parse,
         create_session=create_session,
         dtypes=['fp32', 'fp16', 'bf16']
     ))

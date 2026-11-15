@@ -13,7 +13,7 @@ from nnarchs.nn_types import NnFrameworkType
 from nnarchs.import_libs import trt
 _has_herlegon_system_ = False
 try:
-    from system import (
+    from hsys import (
         GpuDevices,
         NvidiaGpu
     )

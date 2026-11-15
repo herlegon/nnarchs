@@ -7,7 +7,7 @@ import onnxruntime as ort
 from onnx import TensorProto
 
 from nnarchs.logger import nnlogger
-from nnarchs.nn_types import Hdtype, ShapeStrategy
+from nnarchs.nn_types import Hdtype, InferType, ShapeStrategy
 nnlogger.debug(f"[I] ONNX runtime package loaded (version {ort.__version__})")
 
 from onnxruntime.capi.onnxruntime_pybind11_state import InvalidGraph
@@ -43,8 +43,8 @@ def get_opset_version(model_proto: onnx.ModelProto) -> int:
 def get_input_dtype(model_proto: onnx.ModelProto) -> Hdtype:
     """Returns the datatype of the first input of the model.
     It may return an erroneous datatype when there are multiple inputs"""
-    if len(model_proto.graph.output) > 1:
-        warn(yellow("More than 1 input is not supported yet"))
+    # if len(model_proto.graph.output) > 1:
+    #     warn(yellow("More than 1 input is not supported yet"))
     input = model_proto.graph.input[0]
     dim_0 = str(input.type.tensor_type.elem_type).split()[0]
     try:
@@ -60,8 +60,8 @@ def get_input_dtype(model_proto: onnx.ModelProto) -> Hdtype:
 def get_output_dtype(model_proto: onnx.ModelProto) -> Hdtype:
     """Returns the datatype of the first input of the model.
     It may return an erroneous datatype when there are multiple inputs"""
-    if len(model_proto.graph.output) > 1:
-        warn(yellow("More than 1 output is not supported yet"))
+    # if len(model_proto.graph.output) > 1:
+    #     warn(yellow("More than 1 output is not supported yet"))
     output = model_proto.graph.output[0]
     dim_0 = str(output.type.tensor_type.elem_type).split()[0]
     try:
@@ -110,7 +110,6 @@ def guess_shape(
 
 
 def get_io_shapes_from_graph(model: onnx.ModelProto) -> tuple[tuple[int, str]]:
-    # Single input/output currently supported
     graph: onnx.GraphProto = model.graph
     in_field, out_field = graph.input[0], graph.output[0]
     in_shape = [dim.dim_value for dim in in_field.type.tensor_type.shape.dim]
@@ -235,7 +234,7 @@ def get_scale_from_shape_inference(
 
 
 
-def parse(
+def parse_onnx_model(
     model: OnnxModel,
     scale: int | None = None
 ) -> None:
@@ -319,6 +318,89 @@ def parse(
         in_shape_order=in_shape_order,
         shape_strategy=shape_strategy,
     )
+
+
+
+def parse_temporal_onnx_model(model: OnnxModel) -> None:
+    model_proto: onnx.ModelProto = model.model_proto
+
+    in_shape, out_shape = get_io_shapes_from_graph(model_proto)
+    nnlogger.debug(f"[V] Temporal ONNX, shapes: in={in_shape}, out={out_shape}")
+    if len(out_shape) != 4 or len(in_shape) <= 4:
+        raise ValueError("ONNX model: not a temporal model, why detected as this?")
+    shape_strategy: ShapeStrategy = ShapeStrategy()
+
+    _, in_nframes, in_nc, in_h, in_w = in_shape
+    _, out_nc, out_h, out_w = out_shape
+    nnlogger.debug(f"[V] shape: in={in_w}x{in_h}, out={out_w}x{out_h}")
+
+    # Calculate scales if possible
+    is_scale_valid: bool = False
+    if all(x != 0 for x in (out_h, in_h, out_w, in_w)):
+        scale_h, scale_w = out_h // in_h, out_w // in_w
+        shape_strategy.type = "static"
+        shape_strategy.opt_size = (in_w, in_h)
+        shape_strategy.min_size = shape_strategy.opt_size
+        shape_strategy.max_size = shape_strategy.opt_size
+        is_scale_valid = True
+
+    elif scale is not None and scale > 0:
+        is_scale_valid = True
+
+    else:
+        try:
+            if not any(x < 0 for x in [out_h, in_h, out_w, in_w]):
+                scale_h, scale_w = out_h // in_h, out_w // in_w
+                # Note: is downscaling valid? -> yes
+                if scale_h == scale_w and scale_w > 0:
+                    is_scale_valid = True
+                    scale = scale_w
+        except:
+            pass
+
+    if not is_scale_valid:
+        nnlogger.error("[V] scale is not valid, perform a shape inference")
+        raise NotImplementedError(red("SHape inference with a temporal model is not supported yet"))
+
+    # Consolidate scale
+    scale = None
+    if scale_w is not None and scale_w == scale_h:
+        scale = scale_w
+    if scale is None or scale == 0:
+        warn(red("[E] temporal onnx: unsupported scales, W and H scales must be identical and > 0"))
+        # raise ValueError("ONNX model: scale shall be different from 0")
+        # Do not raise an error as it is not currently catched by caller #TODO
+        scale = 0
+
+    # Model dtype
+    supported_dtypes = get_input_dtype(model_proto)
+
+    # IO dtypes
+    io_dtypes = {
+        'input': get_input_dtype(model_proto),
+        'output': get_output_dtype(model_proto),
+    }
+
+    infer_type: InferType = InferType(
+        type='temporal',
+        inputs=in_nframes,
+        outputs=1,
+    )
+
+    model.update(
+        scale=scale,
+        in_nc=in_nc,
+        out_nc=out_nc,
+        opset=get_opset_version(model_proto),
+        dtypes=supported_dtypes,
+        io_dtypes=io_dtypes,
+        infer_type=infer_type,
+
+        # exact_size=exact_size,
+        in_shape_order='NCHW',
+        shape_strategy=shape_strategy,
+    )
+
 
 
 

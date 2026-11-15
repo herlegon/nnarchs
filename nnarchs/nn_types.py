@@ -18,9 +18,21 @@ class NnFrameworkType(Enum):
     TENSORRT = 'TensorRT'
 
 
-def filepath_to_fwk(filepath: str) -> NnFrameworkType:
+@dataclass(slots=True)
+class InferType:
+    type: Literal[
+        'simple',
+        'inpaint',
+        'temporal',
+        'optical_flow'
+    ] = 'simple'
+    inputs: int = 1
+    outputs: int = 1
+
+
+def filepath_to_fwk(filepath: Path) -> NnFrameworkType:
     # Cannot use _value2member_map_ because of lower/upper case
-    value = Path(filepath).parent.name.replace("nn_", "")
+    value = filepath.parent.name.replace("nn_", "")
     enum_dict = {t.value.lower(): t.value for t in NnFrameworkType}
     try:
         return NnFrameworkType._value2member_map_[enum_dict[value]]

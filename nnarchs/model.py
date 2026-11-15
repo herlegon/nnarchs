@@ -4,13 +4,14 @@ import logging
 from pathlib import Path
 import onnx
 from typing import TYPE_CHECKING, Literal
-from hytils import arg_list
+from hytils import arg_list, yellow
 
 from torch import nn
+
 from .logger import nnlogger
 from .nn_pytorch.torch_types import StateDict
 from .nn_tensor_rt.trt_types import TrtEngine
-from .nn_types import Hdtype, NnFrameworkType, ShapeStrategy
+from .nn_types import Hdtype, NnFrameworkType, ShapeStrategy, InferType
 if TYPE_CHECKING:
     from .architecture import (
         NnArchitecture,
@@ -224,9 +225,10 @@ class GenericModel:
 @dataclass
 class OnnxModel(GenericModel):
     model_proto: onnx.ModelProto = None
-    opset: int = 21
+    opset: int = 20
     alt_arch_name: str = ''
     in_shape_order: str = 'NCHW'
+    infer_type: InferType = field(default_factory=InferType)
     torch_arch: NnPytorchArchitecture = None
 
 
@@ -248,6 +250,7 @@ class TrtModel(GenericModel):
     opset: int = 21
     # Put here the device id? no? used for conversion load
     device: str = ""
+    infer_type: InferType = field(default_factory=InferType)
     torch_arch: NnPytorchArchitecture = None
 
     # For information only
@@ -260,7 +263,7 @@ NnModel = OnnxModel | PyTorchModel | TrtModel
 
 
 def create_model(
-    nn_model_path: Path,
+    nn_model_path: Path | None,
     framework: NnFramework,
     model_arch: NnArchitecture,
     model_obj: NnModelObject,
@@ -309,7 +312,10 @@ def create_model(
     nnlogger.debug("Parse the model")
     if logging.getLevelName(nnlogger.getEffectiveLevel()) == "DEBUG":
         # Don't catch the exception when in development
-        model_arch.parse(model)
+        if model_arch is not None:
+            model_arch.parse(model)
+        else:
+            print(yellow(f"[D] do not parse model as it's None"))
 
     else:
         # try:

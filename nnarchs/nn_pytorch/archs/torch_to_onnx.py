@@ -27,7 +27,6 @@ def to_onnx(
     shape_strategy: ShapeStrategy | None = None,
     device: str = 'cpu',
     export_args: dict = {},
-    # **kwargs,
 ) -> onnx.ModelProto | None:
     """Returns an Onnx model as a byte buffer
         if size is not None, use it to convert to a static shape

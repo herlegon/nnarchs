@@ -10,7 +10,7 @@ from nnarchs.architecture import (
     NnTensorrtArchitecture,
     detect_model_arch,
 )
-from nnarchs.nn_types import Hdtype, ShapeStrategy
+from nnarchs.nn_types import Hdtype, InferType, ShapeStrategy
 from nnarchs.model import TrtModel
 from nnarchs.logger import nnlogger
 from ..trt_types import TrtEngine
@@ -99,16 +99,22 @@ def parse(model: TrtModel) -> None:
 
     # Tensor shapes
     tensor_shapes_dtype = get_shapes_dtype(engine)
-    if len(tensor_shapes_dtype['inputs']) != 1:
-        raise NotImplementedError(f"TensorRT: unsupported nb of inputs ({len(tensor_shapes_dtype['inputs'])})")
-    if len(tensor_shapes_dtype['inputs']) != 1:
-        raise NotImplementedError(f"TensorRT: unsupported nb of outputs ({len(tensor_shapes_dtype['outputs'])})")
-    input_name, shape, in_dtype = tensor_shapes_dtype['inputs'][0]
-    in_b, in_nc, in_h, in_w = shape
+
+    input_name, in_shape, in_dtype = tensor_shapes_dtype['inputs'][0]
     _, shape, out_dtype = tensor_shapes_dtype['outputs'][0]
     _, out_nc, out_h, out_w = shape
+    if len(tensor_shapes_dtype['inputs']) == 1:
+        in_b, in_nc, in_h, in_w = in_shape
+    else:
+        # temporal
+        in_b, in_nframes, in_nc, in_h, in_w = in_shape
+        model.infer_type = InferType(
+            type='temporal',
+            inputs=in_nframes,
+            outputs=1,
+        )
 
-    # dtypes
+    # dtypes: use the frame tensor dtype
     model.io_dtypes = {
         'input': TrtDType_to_Hdtype[in_dtype],
         'output': TrtDType_to_Hdtype[out_dtype],

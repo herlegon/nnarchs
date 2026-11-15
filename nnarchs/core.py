@@ -132,6 +132,25 @@ class NnLib:
         ):
             nnlogger.debug("warning: at least a property has not been found, unsupported model")
 
+        # If possible, get torch model
+        if (
+            fwk.type in (NnFrameworkType.ONNX, NnFrameworkType.TENSORRT)
+            and model.torch_arch is None
+        ):
+            torch_arch_name = model.metadata.get('arch_name')
+            model: OnnxModel | TrtModel
+            if torch_arch_name is not None:
+                for k, arch in self.frameworks[NnFrameworkType.PYTORCH].architectures.items():
+                    if (
+                        torch_arch_name == arch.name
+                        or (
+                            (len(torch_arch_name) > len(arch.name))
+                            and arch.name in torch_arch_name
+                        )
+                    ):
+                        model.torch_arch = arch
+                        break
+
         return model
 
 
@@ -146,7 +165,6 @@ class NnLib:
         return session
 
 
-
     def convert_to_onnx(
         self,
         model: NnModel,
@@ -154,7 +172,7 @@ class NnLib:
         dtype: Hdtype = 'fp32',
         device: str = 'cpu',
         shape_strategy: ShapeStrategy | None = None,
-        out_dir: str | Path = "",
+        out_dir: Path = Path,
         suffix: str = "",
     ) -> str | OnnxModel:
         """Convert a model into an onnx model.
@@ -205,7 +223,7 @@ class NnLib:
         onnx_fwk = self.frameworks[NnFrameworkType.ONNX]
         model_arch = onnx_fwk.detect_model_arch(onnx_model_object)
         onnx_model = create_model(
-            nn_model_path='',
+            nn_model_path=None,
             framework=onnx_fwk,
             model_arch=model_arch,
             model_obj=onnx_model_object,
@@ -239,7 +257,7 @@ class NnLib:
         # Save this model
         filepath: Path = Path()
         if out_dir:
-            basename = path_basename(model.filepath)
+            basename = model.filepath.stem
             filepath = onnx_fwk.save(
                 filepath=None,
                 model=onnx_model,

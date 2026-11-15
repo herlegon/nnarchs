@@ -10,6 +10,7 @@ from nnarchs.architecture import (
     TensorRTConv,
 )
 from nnarchs.model import PyTorchModel
+from nnarchs.nn_pytorch.archs.torch_to_onnx import to_onnx
 from nnarchs.nn_types import Hdtype, ShapeStrategy
 from ...torch_types import StateDict
 from ..helpers import (

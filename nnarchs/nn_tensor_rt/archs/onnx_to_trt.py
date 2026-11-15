@@ -86,6 +86,20 @@ def onnx_to_trt_engine(
         print(f"[V]   is_onnx_fp16={is_onnx_fp16}, bf16={has_bf16}")
         print(f"[V]   onnx input shape: {onnx_in_tensor.shape}")
 
+        # Inputs / outputs
+        inputs = [network.get_input(i) for i in range(network.num_inputs)]
+        outputs = [network.get_output(i) for i in range(network.num_outputs)]
+        if not inputs:
+            raise ValueError("Missing input tensor in model")
+
+        for t in inputs:
+            print(f"[V]   input  '{t.name}': shape={tuple(t.shape)}, dtype={t.dtype}")
+        for t in outputs:
+            print(f"[V]   output '{t.name}': shape={tuple(t.shape)}, dtype={t.dtype}")
+        is_onnx_fp16 = any(t.dtype == trt.DataType.HALF for t in inputs)
+        is_onnx_bf16 = any(t.dtype == trt.DataType.BF16 for t in inputs)
+        print(f"[V]   is_onnx_fp16={is_onnx_fp16}, is_onnx_bf16={is_onnx_bf16}, "
+              f"to_fp16={has_fp16}, to_bf16={has_bf16}")
         # builder.max_batch_size = 1
 
         # Create a build configuration specifying how TensorRT should optimize the model
@@ -101,24 +115,19 @@ def onnx_to_trt_engine(
         # optimization level: default=3
         # builder.builder_optimization_level = 5
 
-        if is_onnx_fp16 or has_fp16:
-            has_fp16_support: bool = bool(
-                getattr(builder, "platform_has_fast_fp16", None) is not None
-            )
-            print(f"has_fp16_support: {has_fp16_support}")
-            if has_fp16_support:
-                if builder.platform_has_fast_fp16:
-                    if not use_strongly_typed:
-                        builder_config.set_flag(trt.BuilderFlag.FP16)
-                    print(f"[V]   set fp16 flag")
-                else:
-                    raise RuntimeError("Error: fp16 is requested but this platform does not support it")
-            # else:
-            #     builder_config.set_flag(trt.BuilderFlag.FP16)
+        # FP16: with weak typing the flag is required, otherwise TensorRT may
+        # silently build fp32 kernels even if the ONNX is fp16.
+        # 'platform_has_fast_fp16' is deprecated / removed in recent TensorRT versions:
+        # only use it as a check when it exists, never as a condition to set the flag.
+        if (is_onnx_fp16 or has_fp16) and not use_strongly_typed:
+            if hasattr(builder, "platform_has_fast_fp16") and not builder.platform_has_fast_fp16:
+                raise RuntimeError("Error: fp16 is requested but this platform does not support it")
+            builder_config.set_flag(trt.BuilderFlag.FP16)
+            print("[V]   set fp16 flag")
 
-        if not use_strongly_typed and has_bf16:
-            print(f"use_strongly_typed: {use_strongly_typed}, has_bf16: {has_bf16}")
+        if (is_onnx_bf16 or has_bf16) and not use_strongly_typed:
             builder_config.set_flag(trt.BuilderFlag.BF16)
+            print("[V]   set bf16 flag")
 
         onnx_h, onnx_w = onnx_in_tensor.shape[2:]
         static_onnx: bool = bool(onnx_h != -1 and onnx_w != -1)
