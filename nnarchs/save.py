@@ -6,7 +6,7 @@ import re
 
 from .nn_onnx.archs.save import generate_onnx_basename
 
-from .architecture import NnTensorrtArchitecture
+from .architecture import NnTensorrtArchitecture, NnArchitecture
 from .nn_types import Hdtype, ShapeStrategy
 from .core import nn_lib as nnlib
 
@@ -77,11 +77,11 @@ def generate_out_model_fp(
     out_dir: Path = Path(),
     shape_strategy: ShapeStrategy = ShapeStrategy(type='dynamic'),
     suffix: str = "",
-) -> str:
+) -> Path:
     """Generate the output filepath using a dummy model.
     returns an empty str if not supported or erroneous arg
     """
-    out_model_fp: str = ""
+    out_model_fp: Path = Path()
     basename = model.filepath.stem
     suffix = f"_{suffix}" if suffix else ""
 
@@ -103,10 +103,10 @@ def generate_out_model_fp(
             shape_strategy=shape_strategy,
         )
         onnx_basename: str = generate_onnx_basename(dummy_model, basename)
-        out_model_fp = out_dir / f"{onnx_basename}{suffix}.onnx"
+        out_model_fp: Path = out_dir / f"{onnx_basename}{suffix}.onnx"
 
     elif to == NnFrameworkType.TENSORRT:
-        torch_arch: PyTorchModel = model.arch
+        torch_arch: NnArchitecture = model.arch
 
         if model.fwk_type == NnFrameworkType.PYTORCH:
             if torch_arch.to_tensorrt is None:

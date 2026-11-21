@@ -89,7 +89,7 @@ class TensorRtSession(GenericSession):
         device: str = 'cuda:0',
         dtype: Hdtype = 'fp32',
         warmup: bool = False,
-        create_stream: bool = False,
+        infer_stream: torch.cuda.Stream = None
     ):
         # super().initialize(device=device, dtype=dtype)
         self.device = device
@@ -98,8 +98,10 @@ class TensorRtSession(GenericSession):
 
         nnlogger.debug(f"[I] Use {device} to load the tensorRT Engine")
 
-        if create_stream:
+        if infer_stream is None:
             self.infer_stream: torch.cuda.Stream = torch.cuda.Stream(self.device)
+        else:
+            self.infer_stream = infer_stream
 
         if self.infer_stream is None:
             raise RuntimeError("[TRT] inference stream must be defined before initialization")

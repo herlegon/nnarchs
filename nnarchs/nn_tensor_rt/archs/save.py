@@ -26,6 +26,17 @@ def generate_tensorrt_basename(
     model: TrtModel,
     basename: str
 ) -> str:
+    """ Requires:
+    model:
+        - model dtypes (list)
+        - opset
+        - shape strategy
+        - weak/strong typing
+    system:
+        - compute capability
+        - trt version
+    """
+
     dtypes = '_'.join([fp for fp in ('fp32', 'fp16', 'bf16') if fp in model.dtypes])
     opset = f"op{model.opset}"
     shape: str
