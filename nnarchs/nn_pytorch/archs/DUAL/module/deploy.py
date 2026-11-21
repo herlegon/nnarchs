@@ -34,13 +34,11 @@ class _FP16SafeDynamicConv(PremixedDeployedDynamicConv3x3):
         coefficients = self.coefficients(x)
         with torch.autocast(device_type=x.device.type, enabled=False):
             return _premixed_conv3x3(
-                self,
                 x.float(),
                 self.base.weight.float(),
                 self.base.bias.float(),
                 self.experts.float(),
                 coefficients,
-                lambda: self.coefficients(x),
             )
 
 
