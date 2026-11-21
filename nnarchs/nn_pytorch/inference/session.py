@@ -42,11 +42,14 @@ class PyTorchSession(GenericSession):
         self.model: PyTorchModel = model
         self.device: torch.device = torch.device('cpu')
 
-        try:
-            self.model.module.load_state_dict(self.model.state_dict, strict=True)
-        except:
-            print(red(f"Try loading {self.model.arch.name} with `strict=False`, correct this!"))
-            self.model.module.load_state_dict(self.model.state_dict, strict=False)
+        if self.model.arch.load_state is not None:
+            self.model.arch.load_state(self.model)
+        else:
+            try:
+                self.model.module.load_state_dict(self.model.state_dict, strict=True)
+            except:
+                print(red(f"Try loading {self.model.arch.name} with `strict=False`, correct this!"))
+                self.model.module.load_state_dict(self.model.state_dict, strict=False)
 
         for _, v in self.model.module.named_parameters():
             v.requires_grad = False

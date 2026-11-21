@@ -156,6 +156,9 @@ class NnPytorchArchitecture(NnGenericArchitecture):
 
     _caller_dir: Path = Path()
 
+    # Customize the loading of the state dict
+    load_state: Callable = None
+
 
     def __post_init__(self):
         frame = inspect.currentframe()

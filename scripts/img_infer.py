@@ -43,6 +43,7 @@ from denc import (
     add_debug_arguments,
     load_image_fp32,
     write_image,
+    add_model_arguments,
 )
 
 
@@ -70,6 +71,7 @@ def main():
         help="Append this text to the output image filename."
     )
 
+    add_model_arguments(parser=parser)
     add_inference_arguments(parser=parser)
 
     parser.add_argument(
@@ -99,9 +101,9 @@ def main():
         help="for profiling"
     )
 
-    arguments = parser.parse_args()
+    args = parser.parse_args()
 
-    if arguments.debug:
+    if args.debug:
         # FileOutputHandler = logging.FileHandler('logs.log', mode='w')
         # nnlogger.addHandler(FileOutputHandler)
         nnlogger.addHandler(logging.StreamHandler(sys.stdout))
@@ -110,11 +112,11 @@ def main():
     # Open image as float, the inference session converts
     # the datatype as needed
     in_img: np.ndarray | None = None
-    in_img_fp = Path(arguments.img).resolve()
+    in_img_fp = Path(args.img).resolve()
     try:
         in_img = load_image_fp32(in_img_fp)
     except:
-        sys.exit(red(f"Failed to open image: {arguments.img}"))
+        sys.exit(red(f"Failed to open image: {args.img}"))
 
 
     print(lightcyan(f"Input image:"), f"{in_img_fp}")
@@ -124,16 +126,16 @@ def main():
     device_for_parse: str = "cuda" if is_cuda_available() else 'cpu'
 
     # Open model file
-    model_filepath: Path = Path(arguments.model).resolve()
+    model_filepath: Path = Path(args.model).resolve()
     if not model_filepath.is_file():
         sys.exit(red(f"{model_filepath} does not exist."))
     start_time= time.time()
     try:
         model: NnModel = nnlib.open(model_filepath, device_for_parse)
     except:
-        sys.exit(red(f"Failed to open model: {arguments.model}"))
+        sys.exit(red(f"Failed to open model: {args.model}"))
 
-    if arguments.debug:
+    if args.debug:
         print(model)
 
     elapsed = time.time() - start_time
@@ -144,7 +146,7 @@ def main():
         lightcyan(f"datatypes:"), ', '.join(model.arch.dtypes),
         f"\t\t(parsed in {1000 * elapsed:.1f}ms)"
     )
-    if arguments.verbose:
+    if args.verbose:
         print(model)
 
     # Verify that the image is valid:
@@ -154,36 +156,34 @@ def main():
 
     # Execution provider for inference: set device
     if (
-        (not arguments.cpu and not arguments.dml and not arguments.cuda)
+        (not args.cpu and not args.cuda)
         and model.fwk_type != NnFrameworkType.TENSORRT
     ):
         sys.exit(red(f"An execution provider must be specified."))
 
     device: str = 'cpu'
-    if arguments.dml:
-        device = 'dml'
-    elif arguments.cuda or model.fwk_type == NnFrameworkType.TENSORRT:
+    if args.cuda or model.fwk_type == NnFrameworkType.TENSORRT:
         device = f"cuda:0"
 
     # Check datatype supported by the execution provider and by the model
-    fp16: bool = arguments.fp16
+    fp16: bool = args.fp16
     if device == 'cpu' and fp16:
         sys.exit(red("The execution provider does not support Half datatype (fp16)."))
     if fp16 and 'fp16' not in model.arch.dtypes:
         sys.exit(red("This model does not support Half datatype (fp16)."))
 
     # Check datatype supported by the execution provider and by the model
-    bf16: bool = arguments.bf16
+    bf16: bool = args.bf16
     if device == 'cpu' and bf16:
         sys.exit(red("The execution provider does not support bfloat16 datatype (bf16)."))
     if bf16 and 'bf16' not in model.arch.dtypes:
         sys.exit(red("This model does not support mixed datatype (bf16)."))
 
     # Create a session
-    if arguments.verbose:
+    if args.verbose:
         print("Create a session")
     session: NnModelSession = nnlib.session(model)
-    if arguments.verbose:
+    if args.verbose:
         print(f"Initialize the session with device={device}")
 
     i_dtype: Hdtype = 'fp32'
@@ -196,7 +196,7 @@ def main():
             device=device,
             dtype=i_dtype,
             create_stream=True,
-            warmup=bool(arguments.profiling),
+            warmup=bool(args.profiling),
         )
     except Exception as e:
         session.initialize(
@@ -214,11 +214,11 @@ def main():
     print(lightcyan(f"\tDatatype:"), f"{session.idtype}")
 
     # Inference
-    inferences: int = arguments.n if arguments.profiling else 1
+    inferences: int = args.n if args.profiling else 1
     if inferences > 1:
         print(lightcyan(f"Repeat inference"), inferences, lightcyan("times"))
 
-    if arguments.profiling:
+    if args.profiling:
         print("start", flush=True)
         time.sleep(3)
 
@@ -234,7 +234,7 @@ def main():
         print(lightcyan(f"Inference:"), yellow(f"{1000 * elapsed:.1f}ms"))
 
     # Output image filepath:
-    suffix: str = arguments.suffix
+    suffix: str = args.suffix
     if not suffix:
         suffix_array: list[str] = [
             "",
