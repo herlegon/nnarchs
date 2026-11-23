@@ -1,4 +1,13 @@
 # https://github.com/stinkybread/fdat/blob/main/fdat.py
+
+# Triton 3.9 enables FP fusion (a*b + c -> single FMA instruction) by default,
+# but Triton 3.10 will disable it by default. Setting this to "1" keeps the
+# current behavior: slightly faster kernels, a single rounding step per FMA,
+# and identical outputs after upgrading. Results may differ from a non-fused
+# reference by tiny rounding errors. Also silences the Triton warning
+import os
+os.environ["TRITON_DEFAULT_FP_FUSION"] = "1"
+
 import math
 from typing import Literal
 
@@ -15,6 +24,8 @@ from ..._shared.timm import DropPath
 from .index_window import index_window_attention
 from .padded_norm import KernelLayerNorm
 from .token_dwconv import token_dwconv
+from .helpers import plain_inference
+
 
 @torch.no_grad()
 def default_init_weights(module_list, scale=1, bias_fill=0, **kwargs) -> None:
