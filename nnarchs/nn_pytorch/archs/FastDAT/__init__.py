@@ -1,5 +1,6 @@
 import math
 from pprint import pprint
+from typing import Literal
 from nnarchs.architecture import (
     Module,
     NnPytorchArchitecture,
@@ -14,25 +15,28 @@ from ...torch_types import StateDict
 from ..helpers import get_nsequences
 
 # copy from module to avoid importing module right now
-sample_types: list[str] = [
+SampleMods = Literal[
     "conv",
     "pixelshuffledirect",
     "pixelshuffle",
     "nearest+conv",
     "dysample",
-    "transpose+conv"
 ]
+SampleMods3 = Literal[SampleMods, "transpose+conv", "lda", "pa_up"]
 
 
 
-def detection_fct(state_dict: StateDict, keys: tuple[str | tuple[str]]) -> bool:
+def _detection_fct(state_dict: StateDict, keys: tuple[str | tuple[str]]) -> bool:
     # Differentiate between fdat and fdat-rd
     if (
         contains_all_keys(state_dict=state_dict, keys=keys)
-        and "groups.0.blocks.2.attn.dictionary" not in state_dict
+        # and "groups.0.blocks.2.attn.dictionary" not in state_dict
+        and (
+            "conv_first.weight" in state_dict
+            or "conv_first.1.weight" in state_dict
+        )
     ):
         return True
-
     return False
 
 
@@ -43,29 +47,23 @@ def parse(model: PyTorchModel) -> None:
     scale: int = 2
     in_nc = out_nc = 3
 
-    # Detect the parameters from the state_dict
-    embed_dim, in_nc = state_dict["conv_first.1.weight"].shape[:2]
-    out_nc: int = in_nc
-    mid_dim: int = 64
+    _, upsampler_index, scale, embed_dim, out_nc, mid_dim, _ = state_dict[
+        "upsampler.MetaUpsample"
+    ].tolist()
+    upsampler_type = list(SampleMods3.__args__)[upsampler_index]
 
-    # if "upsampler.MetaUpsample" not in state_dict:
-    #     raise ValueError("missing upsampler.MetaUpsample")
-    # (
-    #     block_version,
-    #     sample_type_index,
-    #     scale,
-    #     in_dim,
-    #     out_nc,
-    #     mid_dim,
-    #     group
-    # ) = state_dict["upsampler.MetaUpsample"].tolist()
-    # if sample_type_index >= len(sample_types):
-    #     raise ValueError(
-    #         f"[E] \'sample_type_index\' {sample_type_index} is not supported"
-    #     )
+    if "conv_first.1.weight" in state_dict:
+        in_nc = out_nc
+        scale = 4 // (
+            math.isqrt(state_dict["conv_first.1.weight"].shape[1] // in_nc)
+        )
+        unshuffle_mod = True
+    else:
+        unshuffle_mod = False
+        in_nc = state_dict["conv_first.weight"].shape[1]
 
-    num_groups: int = get_nsequences(state_dict, "groups")
-    group_block_pattern: list[str] = ["spatial", "channel"]
+    num_groups = get_nsequences(state_dict, "groups")
+    group_block_pattern = ["spatial", "channel"]
     depth_per_group: int = int(
         get_nsequences(state_dict, "groups.0.blocks")
         / len(group_block_pattern)
@@ -95,9 +93,6 @@ def parse(model: PyTorchModel) -> None:
         alt_arch_name = f"{model.arch.name} (xl)"
         drop_path_rate = 0.1
 
-    # todo: detected depending on upsampler.conv key
-    upsampler_type = "pixelshuffle" if embed_dim <= 108 else "transpose+conv"
-
     if is_debugging():
         from .module.fdat import FDAT
         model.update(ModuleClass=FDAT)
@@ -117,11 +112,12 @@ def parse(model: PyTorchModel) -> None:
         window_size=window_size,
         ffn_expansion_ratio=ffn_expansion_ratio,
         aim_reduction_ratio=aim_reduction_ratio,
-        group_block_pattern=group_block_pattern,
+        group_block_pattern=None, # ? group_block_pattern
+        upsampler_type=upsampler_type,
         drop_path_rate=drop_path_rate,
         mid_dim=mid_dim,
-        upsampler_type=upsampler_type,
         img_range=img_range,
+        unshuffle_mod=unshuffle_mod,
     )
 
 
@@ -129,13 +125,12 @@ def parse(model: PyTorchModel) -> None:
 MODEL_ARCHITECTURES: tuple[NnPytorchArchitecture] = (
     NnPytorchArchitecture(
         name="FastDAT",
-        detection_fct=detection_fct,
+        detection_fct=_detection_fct,
         detection_keys=(
-            "groups.0.blocks.0.n1.weight",
-            "groups.0.blocks.0.ffn.fc1.weight",
-            "groups.0.blocks.3.ffn.smix.weight",
-            "groups.1.blocks.3.ffn.smix.weight",
+            "groups.0.blocks.0.attn.bias",
             "groups.0.blocks.0.inter.cg.1.weight",
+            "groups.0.blocks.0.ffn.fc1.weight",
+            "upsampler.MetaUpsample"
         ),
         module=Module(file="fdat", class_name="FDAT"),
         parse=parse,

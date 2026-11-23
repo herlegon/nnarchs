@@ -49,8 +49,10 @@ def import_model_architectures() -> list[NnPytorchArchitecture]:
 
     # Import modules
     if is_debugging():
-        from pprint import pprint
-        pprint(detected_archs)
+        print(f"Detected archs:")
+        for arch in detected_archs:
+            print(f"    {arch}")
+        print()
 
     for arch, arch_module_name, init_file in detected_archs:
         if arch_module_name in sys.modules:
