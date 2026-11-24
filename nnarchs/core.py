@@ -248,7 +248,8 @@ class NnLib:
 
         # Remove metadata from proto and generate new ones in the model
         del onnx_model.model_proto.metadata_props[:]
-        onnx_model.metadata = model.metadata.copy()
+        if model.metadata is not None:
+            onnx_model.metadata = model.metadata.copy()
         onnx_model.metadata = generate_metadata(
             onnx_model,
             metadata=model.metadata

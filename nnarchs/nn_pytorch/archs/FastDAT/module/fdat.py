@@ -21,10 +21,10 @@ from torch.nn.modules.module import _IncompatibleKeys
 
 from ..._shared.dysample import DySample
 from ..._shared.timm import DropPath
-from .index_window import index_window_attention
+from ..._shared.hip import plain_inference
 from ..._shared.padded_norm import KernelLayerNorm
+from .index_window import index_window_attention
 from .token_dwconv import token_dwconv
-from .helpers import plain_inference
 
 
 @torch.no_grad()

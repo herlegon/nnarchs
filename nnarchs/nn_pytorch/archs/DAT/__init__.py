@@ -110,7 +110,7 @@ def parse(model: PyTorchModel) -> None:
         model.update(ModuleClass=DAT)
 
     model.update(
-        arch_name=arch_name,
+        alt_arch_name=arch_name,
         scale=scale,
         in_nc=in_nc,
         out_nc=in_nc,
