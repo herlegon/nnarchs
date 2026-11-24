@@ -1,6 +1,5 @@
 from __future__ import annotations
 import math
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -9,35 +8,50 @@ from torch.nn import functional as F
 
 from einops import rearrange
 from einops.layers.torch import Rearrange
+
 from ..._shared.timm import DropPath, trunc_normal_
 
-
-def img2windows(img, H_sp, W_sp):
-    """
-    Input: Image (B, C, H, W)
-    Output: Window Partition (B', N, C)
-    """
-    B, C, H, W = img.shape
-    img_reshape = img.view(B, C, H // H_sp, H_sp, W // W_sp, W_sp)
-    img_perm = (
-        img_reshape.permute(0, 2, 4, 3, 5, 1).contiguous().reshape(-1, H_sp * W_sp, C)
-    )
-    return img_perm
-
-
-def windows2img(img_splits_hw, H_sp, W_sp, H, W):
-    """
-    Input: Window Partition (B', N, C)
-    Output: Image (B, H, W, C)
-    """
-    B = int(img_splits_hw.shape[0] / (H * W / H_sp / W_sp))
-
-    img = img_splits_hw.view(B, H // H_sp, W // W_sp, H_sp, W_sp, -1)
-    img = img.permute(0, 1, 3, 2, 4, 5).contiguous().view(B, H, W, -1)
-    return img
+from .attention import (
+    in_migraphx_export,
+    pad_heads,
+    window_attention,
+)
+from .inference import (
+    Derived as _Derived,
+    add_into as _sum,
+    border_window_mask,
+    img2windows,
+    shifted_window_attention,
+    shifted_window_mask,
+    windows2img,
+    padded_rows as _padded_rows,
+    traced as _traced
+)
+from ..._shared.padded_norm import KernelLayerNorm
 
 
-class SpatialGate(nn.Module):
+def _unit_length(x):
+    """x scaled to unit length over its tokens, dimension 2: the length of many tokens in
+    FP32, where FP16's sum of squares overflows, and in FP16 only the division."""
+    if x.dtype != torch.float16:
+        return F.normalize(x, dim=2)
+    length = torch.linalg.vector_norm(x, dim=2, keepdim=True, dtype=torch.float32)
+    # FP16's smallest normal number: a head this small is all zeros in FP16 anyway
+    return x / length.clamp_min(2.0**-14).half()
+
+
+def _row_gram(q, k, H, W):
+    """q's channels against k's over every token, (batch, heads, d, d), for q and k of
+    unit length over the tokens: a product per image row, the rows summed in FP32. As one
+    product over every token, cuBLAS picks a kernel of a few blocks: 2.1 ms a block for
+    DAT2 at 512x512 in FP16. A row's sums stay within [-1, 1]."""
+    B, heads, _, d = q.shape
+    rows = q.reshape(B, heads, H, W, d).transpose(-2, -1) @ k.reshape(B, heads, H, W, d)
+    wide = torch.promote_types(q.dtype, torch.float32)
+    return rows.sum(2, dtype=wide).to(q.dtype)
+
+
+class SpatialGate(_Derived):
     """Spatial-Gate.
     Args:
         dim (int): Half of input channels.
@@ -45,7 +59,7 @@ class SpatialGate(nn.Module):
 
     def __init__(self, dim):
         super().__init__()
-        self.norm = nn.LayerNorm(dim)
+        self.norm = KernelLayerNorm(dim)
         self.conv = nn.Conv2d(
             dim, dim, kernel_size=3, stride=1, padding=1, groups=dim
         )  # DW Conv
@@ -54,6 +68,10 @@ class SpatialGate(nn.Module):
         # Split
         x1, x2 = x.chunk(2, dim=-1)
         B, _N, C = x.shape
+        if not _traced():
+            # channels last: the convolution reads and writes the tokens where they are
+            x2 = self.norm(x2).reshape(B, H, W, C // 2).permute(0, 3, 1, 2)
+            return x1 * self.run_conv("conv", self.conv, x2).permute(0, 2, 3, 1).flatten(1, 2)
         x2 = (
             self.conv(self.norm(x2).transpose(1, 2).contiguous().view(B, C // 2, H, W))
             .flatten(2)
@@ -150,7 +168,7 @@ class DynamicPosBias(nn.Module):
         return pos
 
 
-class Spatial_Attention(nn.Module):
+class Spatial_Attention(_Derived):
     """Spatial Window Self-Attention.
     It supports rectangle window (containing square window).
     Args:
@@ -221,72 +239,87 @@ class Spatial_Attention(nn.Module):
 
         self.attn_drop = nn.Dropout(attn_drop)
 
-    def im2win(self, x, H, W):
-        B, _N, C = x.shape
-        x = x.transpose(-2, -1).contiguous().view(B, C, H, W)
-        x = img2windows(x, self.H_sp, self.W_sp)
-        x = (
-            x.reshape(-1, self.H_sp * self.W_sp, self.num_heads, C // self.num_heads)
-            .permute(0, 2, 1, 3)
-            .contiguous()
+    def cached_bias(self):
+        """relative_position_bias, computed once: its input is constant, so in inference it
+        changes only with the weights, the device or the type."""
+        if _traced():
+            return self.relative_position_bias()
+        return self.keep("bias", self.relative_position_bias)
+
+    def relative_position_bias(self):
+        pos = self.pos(self.rpe_biases)
+        # select position bias
+        relative_position_bias = pos[self.relative_position_index.view(-1)].view(
+            self.H_sp * self.W_sp, self.H_sp * self.W_sp, -1
         )
-        return x
+        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()
+        return relative_position_bias.unsqueeze(0)
 
     def forward(self, qkv, H, W, mask=None):
         """
-        Input: qkv: (B, 3*L, C), H, W, mask: (B, N, N), N is the window size
+        Input: qkv: (3, B, H, W, C), H, W, mask: (nW, N, N), N is the window size
         Output: x (B, H, W, C)
         """
-        q, k, v = qkv[0], qkv[1], qkv[2]
+        # partition the q,k,v, image to window, channels last throughout
+        windows = img2windows(qkv, self.H_sp, self.W_sp, self.num_heads)
+        q, k, v = windows[0], windows[1], windows[2]
 
-        B, L, C = q.shape
-        assert L == H * W, "flatten img_tokens has wrong size"
-
-        # partition the q,k,v, image to window
-        q = self.im2win(q, H, W)
-        k = self.im2win(k, H, W)
-        v = self.im2win(v, H, W)
-
-        q = q * self.scale
-        attn = q @ k.transpose(-2, -1)  # B head N C @ B head C N --> B head N N
-
-        # calculate drpe
-        if self.position_bias:
-            pos = self.pos(self.rpe_biases)
-            # select position bias
-            relative_position_bias = pos[self.relative_position_index.view(-1)].view(
-                self.H_sp * self.W_sp, self.H_sp * self.W_sp, -1
-            )
-            relative_position_bias = relative_position_bias.permute(
-                2, 0, 1
-            ).contiguous()
-            attn = attn + relative_position_bias.unsqueeze(0)
-
-        N = attn.shape[3]
-
-        # use mask for shift window
-        if mask is not None:
-            nW = mask.shape[0]
-            attn = attn.view(B, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(
-                0
-            )
-            attn = attn.view(-1, self.num_heads, N, N)
-
-        attn = nn.functional.softmax(attn, dim=-1, dtype=attn.dtype)
-        attn = self.attn_drop(attn)
-
-        x = attn @ v
-        x = x.transpose(1, 2).reshape(
-            -1, self.H_sp * self.W_sp, C
-        )  # B head N N @ B head N C
+        # B head N C @ B head C N --> B head N N, plus the drpe and, for shifted
+        # windows, the mask; softmax; @ B head N C
+        x = window_attention(
+            q,
+            k,
+            v,
+            self.cached_bias() if self.position_bias else None,
+            mask,
+            self.scale,
+            self.attn_drop.p if self.training else 0.0,
+        )
 
         # merge the window, window to image
         x = windows2img(x, self.H_sp, self.W_sp, H, W)  # B H' W' C
 
         return x
 
+    def forward_shifted(self, qkv, H, W, shift_h, shift_w, border_mask):
+        """shifted_window_attention on these windows."""
+        return shifted_window_attention(
+            qkv,
+            H,
+            W,
+            self.H_sp,
+            self.W_sp,
+            shift_h,
+            shift_w,
+            self.num_heads,
+            self.cached_bias() if self.position_bias else None,
+            border_mask,
+            self.scale,
+            self.attn_drop.p if self.training else 0.0,
+        )
 
-class Adaptive_Spatial_Attention(nn.Module):
+
+def _dwconv(attention, x):
+    """attention.dwconv on channels-last x."""
+    conv, norm, activation = attention.dwconv
+    return activation(attention.run_conv("dwconv", conv, x, norm))
+
+
+def _channel_map(attention, x):
+    """attention.channel_interaction on channels-last x."""
+    _, conv_0, norm, activation, conv_1 = attention.channel_interaction
+    x = attention.run_conv("channel 0", conv_0, x.mean((2, 3), keepdim=True), norm)
+    return attention.run_conv("channel 1", conv_1, activation(x))
+
+
+def _spatial_map(attention, x):
+    """attention.spatial_interaction on channels-last x."""
+    conv_0, norm, activation, conv_1 = attention.spatial_interaction
+    x = attention.run_conv("spatial 0", conv_0, x, norm)
+    return attention.run_conv("spatial 1", conv_1, activation(x))
+
+
+class Adaptive_Spatial_Attention(_Derived):
     # The implementation builds on CAT code https://github.com/Zhengchen1999/CAT
     """Adaptive Spatial Self-Attention
     Args:
@@ -354,6 +387,8 @@ class Adaptive_Spatial_Attention(nn.Module):
                 for i in range(self.branch_num)
             ]
         )
+        # The masks of the wrapping windows by size, one set for all the model's blocks
+        self.border_masks = {}
 
         if (self.rg_idx % 2 == 0 and self.b_idx > 0 and (self.b_idx - 2) % 4 == 0) or (
             self.rg_idx % 2 != 0 and self.b_idx % 4 == 0
@@ -387,136 +422,209 @@ class Adaptive_Spatial_Attention(nn.Module):
             nn.Conv2d(dim // 16, 1, kernel_size=1),
         )
 
-    def calculate_mask(self, H, W):
+    def calculate_mask(self, H, W, dtype=None, device=None):
         # The implementation builds on Swin Transformer code https://github.com/microsoft/Swin-Transformer/blob/main/models/swin_transformer.py
         # calculate attention mask for shift window
-        img_mask_0 = torch.zeros((1, H, W, 1))  # 1 H W 1 idx=0
-        img_mask_1 = torch.zeros((1, H, W, 1))  # 1 H W 1 idx=1
-        h_slices_0 = (
-            slice(0, -self.split_size[0]),
-            slice(-self.split_size[0], -self.shift_size[0]),
-            slice(-self.shift_size[0], None),
-        )
-        w_slices_0 = (
-            slice(0, -self.split_size[1]),
-            slice(-self.split_size[1], -self.shift_size[1]),
-            slice(-self.shift_size[1], None),
-        )
-
-        h_slices_1 = (
-            slice(0, -self.split_size[1]),
-            slice(-self.split_size[1], -self.shift_size[1]),
-            slice(-self.shift_size[1], None),
-        )
-        w_slices_1 = (
-            slice(0, -self.split_size[0]),
-            slice(-self.split_size[0], -self.shift_size[0]),
-            slice(-self.shift_size[0], None),
-        )
-        cnt = 0
-        for h in h_slices_0:
-            for w in w_slices_0:
-                img_mask_0[:, h, w, :] = cnt
-                cnt += 1
-        cnt = 0
-        for h in h_slices_1:
-            for w in w_slices_1:
-                img_mask_1[:, h, w, :] = cnt
-                cnt += 1
-
-        # calculate mask for window-0
-        img_mask_0 = img_mask_0.view(
-            1,
-            H // self.split_size[0],
+        attn_mask_0 = shifted_window_mask(
+            H,
+            W,
             self.split_size[0],
-            W // self.split_size[1],
             self.split_size[1],
-            1,
+            self.shift_size[0],
+            self.shift_size[1],
+            dtype,
+            device,
         )
-        img_mask_0 = (
-            img_mask_0.permute(0, 1, 3, 2, 4, 5)
-            .contiguous()
-            .view(-1, self.split_size[0], self.split_size[1], 1)
-        )  # nW, sw[0], sw[1], 1
-        mask_windows_0 = img_mask_0.view(-1, self.split_size[0] * self.split_size[1])
-        attn_mask_0 = mask_windows_0.unsqueeze(1) - mask_windows_0.unsqueeze(2)
-        attn_mask_0 = attn_mask_0.masked_fill(attn_mask_0 != 0, -100.0).masked_fill(
-            attn_mask_0 == 0, 0.0
-        )
-
-        # calculate mask for window-1
-        img_mask_1 = img_mask_1.view(
-            1,
-            H // self.split_size[1],
+        attn_mask_1 = shifted_window_mask(
+            H,
+            W,
             self.split_size[1],
-            W // self.split_size[0],
             self.split_size[0],
-            1,
+            self.shift_size[1],
+            self.shift_size[0],
+            dtype,
+            device,
         )
-        img_mask_1 = (
-            img_mask_1.permute(0, 1, 3, 2, 4, 5)
-            .contiguous()
-            .view(-1, self.split_size[1], self.split_size[0], 1)
-        )  # nW, sw[1], sw[0], 1
-        mask_windows_1 = img_mask_1.view(-1, self.split_size[1] * self.split_size[0])
-        attn_mask_1 = mask_windows_1.unsqueeze(1) - mask_windows_1.unsqueeze(2)
-        attn_mask_1 = attn_mask_1.masked_fill(attn_mask_1 != 0, -100.0).masked_fill(
-            attn_mask_1 == 0, 0.0
-        )
-
         return attn_mask_0, attn_mask_1
+
+    def _apply(self, fn, recurse=True):
+        self.border_masks.clear()
+        return super()._apply(fn, recurse)
+
+    def border_window_masks(self, H, W, dtype, device):
+        """border_window_mask of both branches, kept for the last few sizes."""
+        key = (H, W, dtype, device)
+        masks = self.border_masks.get(key)
+        if masks is None:
+            split, shift = self.split_size, self.shift_size
+            masks = (
+                border_window_mask(H, W, split[0], split[1], shift[0], shift[1], dtype, device),
+                border_window_mask(H, W, split[1], split[0], shift[1], shift[0], dtype, device),
+            )
+            if not (self.training or torch.is_grad_enabled()):
+                if len(self.border_masks) >= 4:
+                    self.border_masks.clear()
+                self.border_masks[key] = masks
+        return masks
 
     def forward(self, x, H, W):
         """
         Input: x: (B, H*W, C), H, W
         Output: x: (B, H*W, C)
         """
+        if _traced():
+            return self.forward_traced(x, H, W)
         B, L, C = x.shape
         assert L == H * W, "flatten img_tokens has wrong size"
 
-        qkv = self.qkv(x).reshape(B, -1, 3, C).permute(2, 0, 1, 3)  # 3, B, HW, C
-        # V without partition
-        v = qkv[2].transpose(-2, -1).contiguous().view(B, C, H, W)
+        # heads padded to a multiple of 8 for the fused attention kernels
+        d = C // self.num_heads
+        width = d + -d % 8
+        # an export's copy has them padded in qkv already
+        given = self.qkv.weight.shape[0] // (3 * self.num_heads)
+        if given != d or width == d or self.training or torch.is_grad_enabled():
+            qkv = pad_heads(self.qkv(x).reshape(B, H, W, 3, self.num_heads, -1))
+        else:
+            weight, bias = self.keep(
+                "qkv", lambda: _padded_rows(self.qkv, self.num_heads, d, width)
+            )
+            qkv = F.linear(x, weight, bias).reshape(B, H, W, 3, self.num_heads, width)
+        # V without partition, channels last
+        v = qkv[:, :, :, 2, :, :d].flatten(3).permute(0, 3, 1, 2)
+        padded = self.num_heads * width
+        qkv = qkv.reshape(B, H, W, 3, padded).permute(3, 0, 1, 2, 4)  # 3, B, H, W, C
 
         # image padding
         max_split_size = max(self.split_size[0], self.split_size[1])
-        pad_l = pad_t = 0
+        pad_r = (max_split_size - W % max_split_size) % max_split_size
+        pad_b = (max_split_size - H % max_split_size) % max_split_size
+        if pad_r or pad_b:
+            qkv = F.pad(qkv, (0, 0, 0, pad_r, 0, pad_b))  # 3, B, _H, _W, C
+        _H = pad_b + H
+        _W = pad_r + W
+
+        half = padded // 2
+        shifted = (
+            self.rg_idx % 2 == 0 and self.b_idx > 0 and (self.b_idx - 2) % 4 == 0
+        ) or (self.rg_idx % 2 != 0 and self.b_idx % 4 == 0)
+        if shifted and _H > max_split_size and _W > max_split_size:
+            split, shift = self.split_size, self.shift_size
+            mask_0, mask_1 = self.border_window_masks(_H, _W, x.dtype, x.device)
+            x1 = self.attns[0].forward_shifted(
+                qkv[..., :half], _H, _W, shift[0], shift[1], mask_0
+            )
+            x2 = self.attns[1].forward_shifted(
+                qkv[..., half:], _H, _W, shift[1], shift[0], mask_1
+            )
+        elif shifted:
+            mask_0, mask_1 = self.calculate_mask(_H, _W, dtype=x.dtype, device=x.device)
+            x1 = torch.roll(
+                self.attns[0](
+                    torch.roll(
+                        qkv[..., :half],
+                        shifts=(-self.shift_size[0], -self.shift_size[1]),
+                        dims=(2, 3),
+                    ),
+                    _H,
+                    _W,
+                    mask=mask_0,
+                ),
+                shifts=(self.shift_size[0], self.shift_size[1]),
+                dims=(1, 2),
+            )
+            x2 = torch.roll(
+                self.attns[1](
+                    torch.roll(
+                        qkv[..., half:],
+                        shifts=(-self.shift_size[1], -self.shift_size[0]),
+                        dims=(2, 3),
+                    ),
+                    _H,
+                    _W,
+                    mask=mask_1,
+                ),
+                shifts=(self.shift_size[1], self.shift_size[0]),
+                dims=(1, 2),
+            )
+        else:
+            x1 = self.attns[0](qkv[..., :half], _H, _W)
+            x2 = self.attns[1](qkv[..., half:], _H, _W)
+        # each branch's own channels, one pass: B, H, W, C
+        heads = self.num_heads // 2
+        attened_x = torch.cat(
+            [
+                x1[:, :H, :W].reshape(B, H, W, heads, -1)[..., :d].flatten(3),
+                x2[:, :H, :W].reshape(B, H, W, heads, -1)[..., :d].flatten(3),
+            ],
+            dim=3,
+        )
+
+        # convolution output, channels last
+        conv_x = _dwconv(self, v)
+
+        # Adaptive Interaction Module (AIM)
+        # C-Map (before sigmoid)
+        channel_map = _channel_map(self, conv_x).permute(0, 2, 3, 1)
+        # S-Map (before sigmoid)
+        spatial_map = _spatial_map(self, attened_x.permute(0, 3, 1, 2))
+
+        # C-I
+        attened_x = attened_x * torch.sigmoid(channel_map)
+        # S-I
+        conv_x = (torch.sigmoid(spatial_map) * conv_x).permute(0, 2, 3, 1)
+
+        x = _sum(conv_x, attened_x).flatten(1, 2)
+
+        x = self.proj(x)
+        x = self.proj_drop(x)
+
+        return x
+
+    def forward_traced(self, x, H, W):
+        B, L, C = x.shape
+        assert L == H * W, "flatten img_tokens has wrong size"
+
+        # Heads as wide as qkv makes them (an export may pad them); each branch has
+        # half of them
+        qkv = self.qkv(x).reshape(B, H, W, 3, self.num_heads, -1)
+        d = C // self.num_heads
+        # V without partition: its C channels
+        v = qkv[:, :, :, 2, :, :d].permute(0, 3, 4, 1, 2).reshape(B, C, H, W)
+        # heads padded to a multiple of 8 for the fused attention kernels
+        qkv = pad_heads(qkv)
+        width = qkv.shape[-1]
+        C = self.num_heads * width
+        qkv = qkv.reshape(B, H, W, 3, C).permute(3, 0, 1, 2, 4)  # 3, B, H, W, C
+
+        # image padding, channels last (no round trip through B, C, H, W)
+        max_split_size = max(self.split_size[0], self.split_size[1])
         pad_r = (max_split_size - W % max_split_size) % max_split_size
         pad_b = (max_split_size - H % max_split_size) % max_split_size
 
-        qkv = qkv.reshape(3 * B, H, W, C).permute(0, 3, 1, 2)  # 3B C H W
-        qkv = (
-            F.pad(qkv, (pad_l, pad_r, pad_t, pad_b))
-            .reshape(3, B, C, -1)
-            .transpose(-2, -1)
-        )  # l r t b
+        qkv = F.pad(qkv, (0, 0, 0, pad_r, 0, pad_b))  # 3, B, _H, _W, C
         _H = pad_b + H
         _W = pad_r + W
-        _L = _H * _W
 
         # window-0 and window-1 on split channels [C/2, C/2]; for square windows (e.g., 8x8), window-0 and window-1 can be merged
         # shift in block: (0, 4, 8, ...), (2, 6, 10, ...), (0, 4, 8, ...), (2, 6, 10, ...), ...
         if (self.rg_idx % 2 == 0 and self.b_idx > 0 and (self.b_idx - 2) % 4 == 0) or (
             self.rg_idx % 2 != 0 and self.b_idx % 4 == 0
         ):
-            qkv = qkv.view(3, B, _H, _W, C)
             qkv_0 = torch.roll(
                 qkv[:, :, :, :, : C // 2],
                 shifts=(-self.shift_size[0], -self.shift_size[1]),
                 dims=(2, 3),
             )
-            qkv_0 = qkv_0.view(3, B, _L, C // 2)
             qkv_1 = torch.roll(
                 qkv[:, :, :, :, C // 2 :],
                 shifts=(-self.shift_size[1], -self.shift_size[0]),
                 dims=(2, 3),
             )
-            qkv_1 = qkv_1.view(3, B, _L, C // 2)
 
             if self.patches_resolution != _H or self.patches_resolution != _W:
-                mask_tmp = self.calculate_mask(_H, _W)
-                x1_shift = self.attns[0](qkv_0, _H, _W, mask=mask_tmp[0].to(x.device))
-                x2_shift = self.attns[1](qkv_1, _H, _W, mask=mask_tmp[1].to(x.device))
+                mask_tmp = self.calculate_mask(_H, _W, dtype=x.dtype, device=x.device)
+                x1_shift = self.attns[0](qkv_0, _H, _W, mask=mask_tmp[0])
+                x2_shift = self.attns[1](qkv_1, _H, _W, mask=mask_tmp[1])
             else:
                 x1_shift = self.attns[0](qkv_0, _H, _W, mask=self.attn_mask_0)
                 x2_shift = self.attns[1](qkv_1, _H, _W, mask=self.attn_mask_1)
@@ -527,20 +635,19 @@ class Adaptive_Spatial_Attention(nn.Module):
             x2 = torch.roll(
                 x2_shift, shifts=(self.shift_size[1], self.shift_size[0]), dims=(1, 2)
             )
-            x1 = x1[:, :H, :W, :].reshape(B, L, C // 2)
-            x2 = x2[:, :H, :W, :].reshape(B, L, C // 2)
             # attention output
-            attened_x = torch.cat([x1, x2], dim=2)
+            attened_x = torch.cat([x1[:, :H, :W, :], x2[:, :H, :W, :]], dim=3)
 
         else:
-            x1 = self.attns[0](qkv[:, :, :, : C // 2], _H, _W)[:, :H, :W, :].reshape(
-                B, L, C // 2
-            )
-            x2 = self.attns[1](qkv[:, :, :, C // 2 :], _H, _W)[:, :H, :W, :].reshape(
-                B, L, C // 2
-            )
+            x1 = self.attns[0](qkv[..., : C // 2], _H, _W)[:, :H, :W, :]
+            x2 = self.attns[1](qkv[..., C // 2 :], _H, _W)[:, :H, :W, :]
             # attention output
-            attened_x = torch.cat([x1, x2], dim=2)
+            attened_x = torch.cat([x1, x2], dim=3)
+
+        # the heads' own channels: B, L, C
+        attened_x = attened_x.reshape(B, H, W, self.num_heads, width)
+        C = self.num_heads * d
+        attened_x = attened_x[..., :d].reshape(B, L, C)
 
         # convolution output
         conv_x = self.dwconv(v)
@@ -571,7 +678,7 @@ class Adaptive_Spatial_Attention(nn.Module):
         return x
 
 
-class Adaptive_Channel_Attention(nn.Module):
+class Adaptive_Channel_Attention(_Derived):
     # The implementation builds on XCiT code https://github.com/facebookresearch/xcit
     """Adaptive Channel Self-Attention
     Args:
@@ -625,6 +732,33 @@ class Adaptive_Channel_Attention(nn.Module):
         Input: x: (B, H*W, C), H, W
         Output: x: (B, H*W, C)
         """
+        if _traced():
+            return self.forward_traced(x, H, W)
+        B, N, C = x.shape
+        tokens = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
+        qkv = tokens.permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+
+        attn = _row_gram(_unit_length(q), _unit_length(k), H, W) * self.temperature
+        attn = self.attn_drop(attn.softmax(dim=-1))
+        # (attn @ v^T)^T in token order: as a view of the channel-major product, the adds
+        # below would read it transposed, at a cost that grows faster than the image
+        attened_x = (v @ attn.transpose(-2, -1)).transpose(1, 2).reshape(B, N, C)
+
+        # channels last from here: the convolutions read and write the tokens where they are
+        conv_x = _dwconv(self, tokens[:, :, 2].reshape(B, H, W, C).permute(0, 3, 1, 2))
+        channel_map = _channel_map(self, attened_x.reshape(B, H, W, C).permute(0, 3, 1, 2))
+        spatial_map = _spatial_map(self, conv_x).permute(0, 2, 3, 1).flatten(1, 2)
+
+        attened_x = attened_x * torch.sigmoid(spatial_map)
+        conv_x = (conv_x * torch.sigmoid(channel_map)).permute(0, 2, 3, 1).flatten(1, 2)
+
+        x = self.proj(_sum(conv_x, attened_x))
+        x = self.proj_drop(x)
+
+        return x
+
+    def forward_traced(self, x, H, W):
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
@@ -636,15 +770,28 @@ class Adaptive_Channel_Attention(nn.Module):
 
         v_ = v.reshape(B, C, N).contiguous().view(B, C, H, W)
 
+        # Each norm sums the squares of every token (65,536 at 256x256), which fp16
+        # overflows when an exported graph computes it in fp16; like PyTorch's own
+        # kernels, normalize in fp32, then cast back
+        half = q.dtype == torch.float16
+        if half:
+            q, k = q.float(), k.float()
         q = torch.nn.functional.normalize(q, dim=-1)
         k = torch.nn.functional.normalize(k, dim=-1)
+        if half:
+            q, k = q.half(), k.half()
 
         attn = (q @ k.transpose(-2, -1)) * self.temperature
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
         # attention output
-        attened_x = (attn @ v).permute(0, 3, 1, 2).reshape(B, N, C)
+        if in_migraphx_export():
+            # transposed, which MIGraphX does not fuse into one attention kernel
+            attened_x = v.transpose(-2, -1) @ attn.transpose(-2, -1)
+            attened_x = attened_x.permute(0, 2, 1, 3).reshape(B, N, C)
+        else:
+            attened_x = (attn @ v).permute(0, 3, 1, 2).reshape(B, N, C)
 
         # convolution output
         conv_x = self.dwconv(v_)
@@ -740,10 +887,12 @@ class DATB(nn.Module):
         Output: x: (B, H*W, C)
         """
         H, W = x_size
-        x = x + self.drop_path(self.attn(self.norm1(x), H, W))
-        x = x + self.drop_path(self.ffn(self.norm2(x), H, W))
-
-        return x
+        if _traced():
+            x = x + self.drop_path(self.attn(self.norm1(x), H, W))
+            x = x + self.drop_path(self.ffn(self.norm2(x), H, W))
+            return x
+        x = _sum(x, self.drop_path(self.attn(self.norm1(x), H, W)))
+        return _sum(x, self.drop_path(self.ffn(self.norm2(x), H, W)))
 
 
 class ResidualGroup(nn.Module):
@@ -835,9 +984,15 @@ class ResidualGroup(nn.Module):
                 x = checkpoint.checkpoint(blk, x, x_size)
             else:
                 x = blk(x, x_size)
-        x = rearrange(x, "b (h w) c -> b c h w", h=H, w=W)
-        x = self.conv(x)
-        x = rearrange(x, "b c h w -> b (h w) c")
+        if _traced():
+            x = rearrange(x, "b (h w) c -> b c h w", h=H, w=W)
+            x = self.conv(x)
+            x = rearrange(x, "b c h w -> b (h w) c")
+        else:
+            # channels last: the convolution reads and writes the tokens where they are
+            B, _, C = x.shape
+            x = self.conv(x.reshape(B, H, W, C).permute(0, 3, 1, 2))
+            return _sum(res, x.permute(0, 2, 3, 1).flatten(1, 2))
         x = res + x
 
         return x
@@ -861,7 +1016,7 @@ class Upsample(nn.Sequential):
             m.append(nn.PixelShuffle(3))
         else:
             raise ValueError(
-                f"scale {scale} is not supported. " "Supported scales: 2^n and 3."
+                f"scale {scale} is not supported. Supported scales: 2^n and 3."
             )
         super().__init__(*m)
 
@@ -936,6 +1091,10 @@ class DAT(nn.Module):
         upsampler="pixelshuffle",
     ):
         super().__init__()
+        # spandrel: the trunk's LayerNorms run spandrel's kernel in eager CUDA inference
+        # (KernelLayerNorm: nn.LayerNorm's parameters, keys and exports)
+        if norm_layer is nn.LayerNorm:
+            norm_layer = KernelLayerNorm
 
         num_in_ch = in_chans
         num_out_ch = in_chans
@@ -1020,6 +1179,12 @@ class DAT(nn.Module):
             )
 
         self.apply(self._init_weights)
+
+        # One store of the wrapping windows' masks for all the model's blocks
+        border_masks = {}
+        for module in self.modules():
+            if isinstance(module, Adaptive_Spatial_Attention):
+                module.border_masks = border_masks
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):

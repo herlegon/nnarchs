@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import torch
 from torch import nn
-from .helpers import from_triton, plain_inference
+from ..._shared.hip import from_triton, plain_inference
 from nnarchs.logger import nnlogger
 
 try:

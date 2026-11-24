@@ -22,7 +22,7 @@ from torch.nn.modules.module import _IncompatibleKeys
 from ..._shared.dysample import DySample
 from ..._shared.timm import DropPath
 from .index_window import index_window_attention
-from .padded_norm import KernelLayerNorm
+from ..._shared.padded_norm import KernelLayerNorm
 from .token_dwconv import token_dwconv
 from .helpers import plain_inference
 

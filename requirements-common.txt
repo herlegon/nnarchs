@@ -5,3 +5,5 @@ safetensors
 onnx
 onnxruntime
 # onnxruntime-directml
+
+einops

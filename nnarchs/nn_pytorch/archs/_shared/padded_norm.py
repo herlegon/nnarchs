@@ -12,16 +12,14 @@ weight and bias and writes the padding channels as zeros, with no intermediate t
 Triton is optional: without it, AVAILABLE is False and PaddedLayerNorm computes the same
 values with PyTorch's operations.
 """
-
 from __future__ import annotations
-
-import logging
+from nnarchs.logger import nnlogger
 
 import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .helpers import from_triton, plain_inference
+from .hip import from_triton, plain_inference
 
 try:
     import triton
@@ -30,8 +28,6 @@ except ImportError:
     AVAILABLE = False
 else:
     AVAILABLE = True
-
-logger = logging.getLogger("spandrel.normalization")
 
 # A kernel that fails to compile or launch turns this off for the rest of the process.
 PADDED_NORM = AVAILABLE
@@ -168,7 +164,7 @@ class PaddedLayerNorm(nn.Module):
                 if not from_triton(error):
                     raise
                 PADDED_NORM = False
-                logger.warning(
+                nnlogger.warning(
                     "The Triton padded LayerNorm failed (%s: %s); using PyTorch's",
                     type(error).__name__,
                     error,
@@ -206,7 +202,7 @@ class KernelLayerNorm(nn.LayerNorm):
                 if not from_triton(error):
                     raise
                 PADDED_NORM = False
-                logger.warning(
+                nnlogger.warning(
                     "The Triton LayerNorm failed (%s: %s); using PyTorch's",
                     type(error).__name__,
                     error,

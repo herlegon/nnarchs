@@ -19,6 +19,7 @@ dependencies = [
     "onnx",
     "onnxruntime",
     # "onnxruntime-directml",
+    "einops",
 
     "hytils",
     "hsys",

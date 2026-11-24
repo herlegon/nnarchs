@@ -12,13 +12,11 @@ Triton is optional: without it, AVAILABLE is False and the callers' PyTorch path
 """
 
 from __future__ import annotations
-
-import logging
-
 import torch
 from torch import nn
+from nnarchs.logger import nnlogger
 
-from .helpers import (
+from ..._shared.hip import (
     from_triton,
     is_depthwise_3x3,
     plain_inference,
@@ -32,7 +30,6 @@ except ImportError:
 else:
     AVAILABLE = True
 
-logger = logging.getLogger("spandrel.attention")
 
 # A kernel that fails to compile or launch turns this off for the rest of the process.
 TOKEN_DWCONV = AVAILABLE
@@ -134,7 +131,7 @@ def token_dwconv(
         if not from_triton(error):
             raise
         TOKEN_DWCONV = False
-        logger.warning(
+        nnlogger.warning(
             "The Triton depthwise convolution failed (%s: %s); using PyTorch's",
             type(error).__name__,
             error,
