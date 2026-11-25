@@ -21,24 +21,17 @@ from nnarchs.logger import nnlogger
 import torch
 from torch import nn
 
-from ..._shared.hip import from_triton, plain_inference
-
-try:
-    import triton
-    import triton.language as tl
-except ImportError:
-    AVAILABLE = False
-else:
-    AVAILABLE = True
+from ..._shared.execution_checks import can_use_custom_kernel
+from ..._shared.triton_utils import TRITON_AVAILABLE, from_triton, tl, triton
 
 
 # A kernel that fails to compile or launch turns this off for the rest of the process.
-FLASH_WINDOW = AVAILABLE
+FLASH_WINDOW = TRITON_AVAILABLE
 
 # Head widths up to this run in the kernel; wider heads keep the PyTorch path.
 MAX_HEAD_WIDTH = 128
 
-if AVAILABLE:
+if TRITON_AVAILABLE:
 
     @triton.jit
     def _flash_window(
@@ -181,24 +174,26 @@ def launch(
     return out
 
 
-# plain_inference's module: the attention has no weights of its own, and q requires a
+# can_use_custom_kernel's module: the attention has no weights of its own, and q requires a
 # gradient whenever a weight before it does.
 _WEIGHTLESS = nn.Module().eval()
 
 
 def usable(
-    q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, bias: torch.Tensor | None
+    q: torch.Tensor,
+    k: torch.Tensor,
+    v: torch.Tensor,
+    bias: torch.Tensor | None
 ) -> bool:
     """Whether the kernel may run this attention: plain eager inference
-    (plain_inference: no tracing, export, compilation, autocast, dispatch mode or
-    gradient) on an NVIDIA GPU (a ROCm build keeps the PyTorch path), FP16 or BF16
+    (can_use_custom_kernel: no tracing, export, compilation, autocast, dispatch mode or
+    gradient) on an NVIDIA GPU, FP16 or BF16
     operands of one type, heads up to MAX_HEAD_WIDTH wide with the last dimension
     contiguous, and a bias, if any, one (heads, N, M) for all windows, contiguous."""
     heads, n_queries = q.shape[1], q.shape[2]
     return (
         FLASH_WINDOW
         and q.is_cuda
-        and torch.version.hip is None
         and q.dtype in (torch.float16, torch.bfloat16)
         and k.dtype == v.dtype == q.dtype
         and max(q.shape[-1], v.shape[-1]) <= MAX_HEAD_WIDTH
@@ -212,7 +207,7 @@ def usable(
                 and bias.numel() == heads * n_queries * k.shape[2]
             )
         )
-        and plain_inference(q, _WEIGHTLESS)
+        and can_use_custom_kernel(q, _WEIGHTLESS)
     )
 
 

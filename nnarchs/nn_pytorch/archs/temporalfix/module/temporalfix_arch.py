@@ -107,12 +107,9 @@ def _flow_to_grid_from_base(
     *,
     fp32_grid: bool,
 ) -> Tensor:
-
     flow = ten_flow.float() if fp32_grid else ten_flow
+    base_grid = base_grid.to(device=flow.device, dtype=flow.dtype)
     _, _, h, w = flow.shape
-
-    grid_dtype = torch.float32 if fp32_grid else ten_flow.dtype
-    base_grid = base_grid.to(device=flow.device, dtype=grid_dtype)
 
     flow_x = flow[:, 0:1] * (2.0 / float(w))
     flow_y = flow[:, 1:2] * (2.0 / float(h))

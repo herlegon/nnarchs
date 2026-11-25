@@ -18,21 +18,13 @@ from nnarchs.logger import nnlogger
 import torch
 from torch import nn
 from torch.nn import functional as F
-
-from .hip import from_triton, plain_inference
-
-try:
-    import triton
-    import triton.language as tl
-except ImportError:
-    AVAILABLE = False
-else:
-    AVAILABLE = True
+from .execution_checks import can_use_custom_kernel
+from .triton_utils import TRITON_AVAILABLE, from_triton, tl, triton
 
 # A kernel that fails to compile or launch turns this off for the rest of the process.
-PADDED_NORM = AVAILABLE
+PADDED_NORM = TRITON_AVAILABLE
 
-if AVAILABLE:
+if TRITON_AVAILABLE:
 
     @triton.jit
     def _padded_layer_norm(
@@ -113,17 +105,16 @@ def launch(
 
 def usable(x: torch.Tensor, module: nn.Module) -> bool:
     """Whether the kernel may run module's normalization on x: plain eager inference
-    (plain_inference) on an NVIDIA GPU (a ROCm build keeps the PyTorch path), FP16 or
+    (can_use_custom_kernel) on an NVIDIA GPU, FP16 or
     BF16 weights, x in their type or FP32, its leading dimensions viewable as rows (a
     channels-first image read as tokens included)."""
     weight = module.get_parameter("weight")
     if not (
         PADDED_NORM
         and x.is_cuda
-        and torch.version.hip is None
         and weight.dtype in (torch.float16, torch.bfloat16)
         and x.dtype in (weight.dtype, torch.float32)
-        and plain_inference(x, module)
+        and can_use_custom_kernel(x, module)
     ):
         return False
     try:
@@ -183,7 +174,7 @@ class KernelLayerNorm(nn.LayerNorm):
     """nn.LayerNorm (same parameters, state-dict keys and exports) whose forward runs the
     kernel above with no padding channels in plain eager CUDA inference: 0.45 ms against
     F.layer_norm's 0.98 ms at a 4x HAT-L or DAT2 1024 input's 1,048,576 tokens of 180
-    channels on an RTX 5090. Elsewhere (tracing, export, training, the CPU, ROCm, FP32,
+    channels on an RTX 5090. Elsewhere (tracing, export, training, the CPU, FP32,
     an input in another type than the weights), and after a Triton failure (which
     switches the kernel off for the process with one warning), nn.LayerNorm.forward."""
 

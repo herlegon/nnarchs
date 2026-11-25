@@ -10,7 +10,7 @@ from .dual_arch import (
 
 
 
-class _FP16SafeDynamicConv(PremixedDeployedDynamicConv3x3):
+class FP16SafeDynamicConv(PremixedDeployedDynamicConv3x3):
     """The last group's dynamic convolution, in FP32 when the model runs in FP16.
 
     Its output can far exceed FP16's 65504 (125k in a trained 1x Light) although
@@ -43,7 +43,7 @@ class _FP16SafeDynamicConv(PremixedDeployedDynamicConv3x3):
 
 
 
-class _FP16SafeTokenNorm(TokenNorm):
+class FP16SafeTokenNorm(TokenNorm):
     """A norm reading the FP32 sum above; it hands the trunk back its own dtype."""
 
     def __init__(self, source: TokenNorm) -> None:

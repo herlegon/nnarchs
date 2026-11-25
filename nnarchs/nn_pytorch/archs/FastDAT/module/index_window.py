@@ -14,23 +14,17 @@ Triton is optional: without it, AVAILABLE is False and the callers' PyTorch path
 """
 
 from __future__ import annotations
+from nnarchs.logger import nnlogger
 
 import torch
 from torch import nn
-from ..._shared.hip import from_triton, plain_inference
-from nnarchs.logger import nnlogger
 
-try:
-    import triton
-    import triton.language as tl
-except ImportError:
-    AVAILABLE = False
-else:
-    AVAILABLE = True
+from ..._shared.execution_checks import can_use_custom_kernel
+from ..._shared.triton_utils import TRITON_AVAILABLE, from_triton, tl, triton
 
 
 # A kernel that fails to compile or launch turns this off for the rest of the process.
-INDEX_WINDOW = AVAILABLE
+INDEX_WINDOW = TRITON_AVAILABLE
 
 # Head widths up to this run in the kernel.
 MAX_HEAD_WIDTH = 128
@@ -38,7 +32,7 @@ MAX_HEAD_WIDTH = 128
 # The query and key tile of every launch: a window's tokens must be a multiple of it.
 TILE = 64
 
-if AVAILABLE:
+if TRITON_AVAILABLE:
 
     @triton.jit
     def _region(p, n, window, shift):
@@ -230,7 +224,6 @@ def usable(qkv: torch.Tensor, bias: torch.Tensor, window: int) -> bool:
         INDEX_WINDOW
         and n_tokens % TILE == 0
         and qkv.is_cuda
-        and torch.version.hip is None
         and qkv.dtype in (torch.float16, torch.bfloat16)
         and qkv.dim() == 6
         and qkv.is_contiguous()
@@ -238,7 +231,7 @@ def usable(qkv: torch.Tensor, bias: torch.Tensor, window: int) -> bool:
         and bias.dtype == qkv.dtype
         and bias.is_contiguous()
         and bias.numel() == heads * n_tokens * n_tokens
-        and plain_inference(qkv, _WEIGHTLESS)
+        and can_use_custom_kernel(qkv, _WEIGHTLESS)
     )
 
 

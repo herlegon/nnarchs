@@ -46,6 +46,16 @@ class DySample(nn.Module):
             .reshape(1, -1, 1, 1)
         )
 
+
+    def _normalizer(self, x: torch.Tensor, offset: torch.Tensor) -> torch.Tensor:
+        """[W, H] of the offset map, shaped to broadcast against the coordinates."""
+        return torch.tensor(
+            [offset.shape[-1], offset.shape[-2]],
+            dtype=x.dtype,
+            device=x.device
+        ).view(1, 2, 1, 1, 1)
+
+
     def forward(self, x: torch.Tensor)-> torch.Tensor:
         offset = self.offset(x) * self.scope(x).sigmoid() * 0.5 + self.init_pos
         B, _, H, W = offset.shape
@@ -61,12 +71,7 @@ class DySample(nn.Module):
             .type(x.dtype)
             .to(x.device, non_blocking=True)
         )
-        normalizer = torch.tensor(
-            [W, H],
-            dtype=x.dtype,
-            device=x.device,
-            pin_memory=False,  # pin_memory was originally True
-        ).view(1, 2, 1, 1, 1)
+        normalizer = self._normalizer(x, offset)
         coords = 2 * (coords + offset) / normalizer - 1
 
         coords = (
@@ -88,3 +93,40 @@ class DySample(nn.Module):
             output = self.end_conv(output)
 
         return output
+
+
+
+class ExportableDySample(DySample):
+    """DySample that exports to ONNX with dynamic input sizes.
+
+    Differences from DySample:
+
+    - The [W, H] normalizer comes from torch._shape_as_tensor, so a trace
+      records the sizes as part of the graph instead of as constants. The
+      exported model then accepts any input size, not only the export one.
+    - The end convolution has a configurable kernel (end_kernel), with
+      padding end_kernel // 2 so the spatial size is preserved.
+    - in_channels and out_ch have defaults (64 and 3).
+
+    Parameters and buffers have the same names as in DySample, so checkpoints
+    load into either class.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 64,
+        out_ch: int = 3,
+        scale: int = 2,
+        groups: int = 4,
+        end_convolution: bool = True,
+        end_kernel: int = 1,
+    ) -> None:
+        super().__init__(in_channels, out_ch, scale, groups, end_convolution)
+        if end_convolution and end_kernel != 1:
+            self.end_conv = nn.Conv2d(
+                in_channels, out_ch, end_kernel, 1, end_kernel // 2
+            )
+
+    def _normalizer(self, x: torch.Tensor, offset: torch.Tensor) -> torch.Tensor:
+        return torch._shape_as_tensor(offset)[[4, 3]].to(x).view(1, 2, 1, 1, 1)
+

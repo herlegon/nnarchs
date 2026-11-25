@@ -1,16 +1,9 @@
 # https://github.com/stinkybread/fdat/blob/main/fdat.py
 
-# Triton 3.9 enables FP fusion (a*b + c -> single FMA instruction) by default,
-# but Triton 3.10 will disable it by default. Setting this to "1" keeps the
-# current behavior: slightly faster kernels, a single rounding step per FMA,
-# and identical outputs after upgrading. Results may differ from a non-fused
-# reference by tiny rounding errors. Also silences the Triton warning
-import os
-os.environ["TRITON_DEFAULT_FP_FUSION"] = "1"
-
 import math
 from typing import Literal
 
+from einops import rearrange
 import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
@@ -19,10 +12,11 @@ from torch.nn.init import trunc_normal_
 from torch.nn.modules.batchnorm import _BatchNorm
 from torch.nn.modules.module import _IncompatibleKeys
 
-from ..._shared.dysample import DySample
-from ..._shared.timm import DropPath
-from ..._shared.hip import plain_inference
+from ....torch_types import StateDict
+from ..._shared.dysample import ExportableDySample
+from ..._shared.execution_checks import can_use_custom_kernel
 from ..._shared.padded_norm import KernelLayerNorm
+from ..._shared.timm import DropPath
 from .index_window import index_window_attention
 from .token_dwconv import token_dwconv
 
@@ -60,92 +54,6 @@ SampleMods = Literal[
 ]
 
 SampleMods3 = Literal[SampleMods, "transpose+conv", "lda", "pa_up"]
-
-
-class DySample(nn.Module):
-    """Adapted from 'Learning to Upsample by Learning to Sample':
-    https://arxiv.org/abs/2308.15085
-    https://github.com/tiny-smart/dysample
-    """
-
-    def __init__(
-        self,
-        in_channels: int = 64,
-        out_ch: int = 3,
-        scale: int = 2,
-        groups: int = 4,
-        end_convolution: bool = True,
-        end_kernel=1,
-    ) -> None:
-        super().__init__()
-
-        if in_channels <= groups or in_channels % groups != 0:
-            msg = "Incorrect in_channels and groups values."
-            raise ValueError(msg)
-
-        out_channels = 2 * groups * scale**2
-        self.scale = scale
-        self.groups = groups
-        self.end_convolution = end_convolution
-        if end_convolution:
-            self.end_conv = nn.Conv2d(
-                in_channels, out_ch, end_kernel, 1, end_kernel // 2
-            )
-        self.offset = nn.Conv2d(in_channels, out_channels, 1)
-        self.scope = nn.Conv2d(in_channels, out_channels, 1, bias=False)
-        if self.training:
-            nn.init.trunc_normal_(self.offset.weight, std=0.02)
-            nn.init.constant_(self.scope.weight, val=0)
-
-        self.register_buffer("init_pos", self._init_pos())
-
-    def _init_pos(self) -> Tensor:
-        h = torch.arange((-self.scale + 1) / 2, (self.scale - 1) / 2 + 1) / self.scale
-        return (
-            torch.stack(torch.meshgrid([h, h], indexing="ij"))
-            .transpose(1, 2)
-            .repeat(1, self.groups, 1)
-            .reshape(1, -1, 1, 1)
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        offset = self.offset(x) * self.scope(x).sigmoid() * 0.5 + self.init_pos
-        B, _, H, W = offset.shape
-        offset = offset.view(B, 2, -1, H, W)
-        coords_h = torch.arange(H) + 0.5
-        coords_w = torch.arange(W) + 0.5
-
-        coords = (
-            torch.stack(torch.meshgrid([coords_w, coords_h], indexing="ij"))
-            .transpose(1, 2)
-            .unsqueeze(1)
-            .unsqueeze(0)
-            .type(x.dtype)
-            .to(x.device, non_blocking=True)
-        )
-        # W and H, which a trace (ONNX export) records as the graph's own
-        normalizer = torch._shape_as_tensor(offset)[[4, 3]].to(x).view(1, 2, 1, 1, 1)
-        coords = 2 * (coords + offset) / normalizer - 1
-
-        coords = (
-            F.pixel_shuffle(coords.reshape(B, -1, H, W), self.scale)
-            .view(B, 2, -1, self.scale * H, self.scale * W)
-            .permute(0, 2, 3, 4, 1)
-            .contiguous()
-            .flatten(0, 1)
-        )
-        output = F.grid_sample(
-            x.reshape(B * self.groups, -1, H, W),
-            coords,
-            mode="bilinear",
-            align_corners=False,
-            padding_mode="border",
-        ).view(B, -1, self.scale * H, self.scale * W)
-
-        if self.end_convolution:
-            output = self.end_conv(output)
-
-        return output
 
 
 class LayerNorm(nn.Module):
@@ -400,7 +308,7 @@ class UniUpsampleV3(nn.Sequential):
                     [nn.Conv2d(in_dim, mid_dim, 3, 1, 1), nn.LeakyReLU(inplace=True)]
                 )
             m.append(
-                DySample(mid_dim, out_dim, scale, group, end_kernel=dysample_end_kernel)
+                ExportableDySample(mid_dim, out_dim, scale, group, end_kernel=dysample_end_kernel)
             )
             # m.append(nn.Conv2d(mid_dim, out_dim, dysample_end_kernel, 1, dysample_end_kernel//2)) # kernel 1 causes chromatic artifacts
         elif upsample == "transpose+conv":
@@ -483,12 +391,12 @@ class UniUpsampleV3(nn.Sequential):
 
 def _fast_tokens(x: Tensor, module: nn.Module) -> bool:
     """Whether module may run its token-order path on x: plain eager inference
-    (plain_inference) on a CUDA GPU in FP16 or BF16. Elsewhere (CPU, FP32, tracing,
+    (can_use_custom_kernel) on a CUDA GPU in FP16 or BF16. Elsewhere (CPU, FP32, tracing,
     ONNX export, training) the original operations run."""
     return (
         x.is_cuda
         and x.dtype in (torch.float16, torch.bfloat16)
-        and plain_inference(x, module)
+        and can_use_custom_kernel(x, module)
     )
 
 class FastSpatialWindowAttention(nn.Module):

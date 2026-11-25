@@ -169,7 +169,7 @@ def parse(model: PyTorchModel) -> None:
 
 
 def load_state(model: PyTorchModel) -> None:
-    from .module.deploy import _FP16SafeDynamicConv, _FP16SafeTokenNorm
+    from .module.deploy import FP16SafeDynamicConv, FP16SafeTokenNorm
     from .module.dual_arch import PremixedDeployedDynamicConv3x3
 
     module: nn.Module = model.module
@@ -184,17 +184,17 @@ def load_state(model: PyTorchModel) -> None:
     # the routers and expert kernels stay input-dependent. Fold on CPU in
     # FP32 (the factors in FP64) before ModelLoader moves this module to the
     # GPU.
-    module.float().eval()
+    module.to(torch.float32).eval()
     if not model.folded:
         module.prepare_for_export()
 
     last = module.groups[-1]
     assert isinstance(last.conv, PremixedDeployedDynamicConv3x3)
-    last.conv = _FP16SafeDynamicConv(last.conv)
-    module.final_norm = _FP16SafeTokenNorm(module.final_norm)
+    last.conv = FP16SafeDynamicConv(last.conv)
+    module.final_norm = FP16SafeTokenNorm(module.final_norm)
     if len(module.groups) == 2:
         # The cross-scale retrieval reads group 1's output too.
-        module.xr.norm_u = _FP16SafeTokenNorm(module.xr.norm_u)
+        module.xr.norm_u = FP16SafeTokenNorm(module.xr.norm_u)
     module.requires_grad_(False).eval()
 
 

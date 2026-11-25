@@ -130,6 +130,22 @@ def parse(model: PyTorchModel) -> None:
     )
 
 
+
+def load_state(model: PyTorchModel) -> None:
+    from .module.fp32_last_group import FP32LayerNorm, keep_last_group_in_fp32
+    from torch import nn
+
+    module: nn.Module = model.module
+
+    # FP16: the last group's closing convolution writes far beyond 65504 in
+    # trained models; it, the group's residual sum and the final norm run in FP32
+    module.layers[-1].conv = keep_last_group_in_fp32(module.layers[-1].conv)
+    module.norm = FP32LayerNorm(module.norm)
+
+    module.load_state_dict(model.state_dict, strict=True)
+
+
+
 MODEL_ARCHITECTURES: tuple[NnPytorchArchitecture] = (
     NnPytorchArchitecture(
         name="DAT",
@@ -139,14 +155,15 @@ MODEL_ARCHITECTURES: tuple[NnPytorchArchitecture] = (
         ),
         module=Module(file="dat_arch", class_name="DAT"),
         parse=parse,
-        dtypes=('fp32', 'bf16'),
+        load_state=load_state,
+        dtypes=('fp32', 'bf16', 'fp16'),
         size_constraint=SizeConstraint(min=(16, 16)),
         to_onnx = OnnxConv(
-            dtypes=set(['fp32', 'bf16']),
+            dtypes=set(['fp32', 'bf16', 'fp16']),
             shape_strategy_types=set(['dynamic']),
         ),
         to_tensorrt=TensorRTConv(
-            dtypes=set(['fp32', 'bf16']),
+            dtypes=set(['fp32', 'bf16', 'fp16']),
             weak_typing=True,
             shape_strategy_types=set(['fixed']),
         ),

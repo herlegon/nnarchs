@@ -3,45 +3,38 @@
 A model that takes them works channels last: a convolution reads and writes tokens where they
 are. What depends only on the weights is kept, and a shifted window that does not wrap around
 is a plain window at an offset, with no roll and no mask. Traced graphs keep channels first and
-no caches, and so do models on ROCm, whose depthwise kernels take channels first."""
-
+no caches."""
 from __future__ import annotations
-
 from collections.abc import Callable
+from typing import Optional
 
 import torch
 from torch import nn
 from torch.nn import functional as F
+from torch import Tensor
 
 from .attention import window_attention
-from .kernels import hip_kernels_available
 
 
-def traced() -> bool:
-    """Whether this call keeps channels first and no caches: a traced graph does, and ROCm's
-    depthwise kernels take nothing else."""
-    return (
-        torch.jit.is_tracing()
-        or torch.onnx.is_in_onnx_export()
-        or hip_kernels_available()
-    )
-
-
-class Derived(nn.Module):
-    """A module with tensors derived from its weights, kept for inference: moving or casting
-    the model, or loading weights, drops them, and training and tracing never see them."""
+class InferenceCacheModule(nn.Module):
+    """A module that caches tensors derived from its weights, for inference only.
+    Moving or casting the model, or loading weights, drops the cache; training and
+    graph export never see it."""
 
     def __init__(self):
         super().__init__()
         self.derived = {}
 
+
     def _apply(self, fn, recurse=True):
         self.derived.clear()
         return super()._apply(fn, recurse)
 
+
     def _load_from_state_dict(self, *args, **kwargs):
         self.derived.clear()
         super()._load_from_state_dict(*args, **kwargs)
+
 
     def keep(self, key, compute):
         if self.training or torch.is_grad_enabled():
@@ -50,6 +43,7 @@ class Derived(nn.Module):
         if kept is None:
             kept = self.derived[key] = compute()
         return kept
+
 
     def run_conv(self, key, conv, x, norm=None):
         """conv on channels-last x, then its batch norm, folded into it in inference, with
@@ -61,12 +55,20 @@ class Derived(nn.Module):
         return F.conv2d(x, weight, bias, conv.stride, conv.padding, conv.dilation, conv.groups)
 
 
-def add_into(x, y):
-    """x + y in y's memory, y being a result nothing else reads; of two types, the wider's."""
-    return y.add_(x) if x.dtype == y.dtype and not torch.is_grad_enabled() else x + y
+
+def add_into(x: Tensor, y: Tensor) -> Tensor:
+    """x + y, written into y when that is safe (same dtype, no autograd).
+    y must be a temporary nothing else reads: it is overwritten. Otherwise
+    falls back to a plain x + y, with the usual type promotion."""
+    return (
+        y.add_(x)
+        if x.dtype == y.dtype and not torch.is_grad_enabled()
+        else x + y
+    )
 
 
-def padded_rows(linear, heads, width, padded):
+
+def padded_rows(linear, heads, width, padded) -> Tensor:
     """linear's weight and bias with zero rows after each head's width: its output heads are
     padded with exact zeros, without a pass over the output."""
 
@@ -78,17 +80,19 @@ def padded_rows(linear, heads, width, padded):
     return pad(linear.weight), None if linear.bias is None else pad(linear.bias)
 
 
-def channels_last_conv(conv, norm):
+def channels_last_conv(conv: nn.Module, norm: nn.Module | None) -> tuple[Tensor, Optional[Tensor]]:
     weight, bias = conv.weight, conv.bias
     if norm is not None:
-        dtype = weight.dtype
+        dtype: torch.dtype = weight.dtype
         # at least FP32, as batch norm computes
         wide = torch.promote_types(dtype, torch.float32)
+
         scale = norm.weight.to(wide) / (norm.running_var.to(wide) + norm.eps).sqrt()
         offset = norm.bias.to(wide) - norm.running_mean.to(wide) * scale
         bias = offset if bias is None else bias.to(wide) * scale + offset
         weight = (weight.to(wide) * scale.view(-1, 1, 1, 1)).to(dtype)
         bias = bias.to(dtype)
+
     return weight.to(memory_format=torch.channels_last), bias
 
 
@@ -124,7 +128,9 @@ def _window_regions(n, split, shift, device):
     return past_split + (index >= n - shift).to(torch.int32)
 
 
-def shifted_window_mask(H, W, split_h, split_w, shift_h, shift_w, dtype, device):
+def shifted_window_mask(
+    H, W, split_h, split_w, shift_h, shift_w, dtype, device
+) -> torch.Tensor:
     """Swin's attention mask for shifted windows (nW, N, N): 0 between tokens of the same
     region, -100 across. Each axis has three regions, split at -split and -shift; the
     regions come from index comparisons, so an exported graph needs no scatter and the
@@ -144,7 +150,9 @@ def shifted_window_mask(H, W, split_h, split_w, shift_h, shift_w, dtype, device)
     )
 
 
-def border_window_mask(H, W, split_h, split_w, shift_h, shift_w, dtype, device):
+def border_window_mask(
+    H, W, split_h, split_w, shift_h, shift_w, dtype, device
+) -> torch.Tensor:
     """shifted_window_mask for the only windows it marks, those that wrap around: the right
     column above the last row, then the last row. The others are plain windows."""
     img_mask = (
@@ -168,7 +176,7 @@ def border_window_mask(H, W, split_h, split_w, shift_h, shift_w, dtype, device):
 
 def shifted_window_attention(
     qkv, H, W, H_sp, W_sp, shift_h, shift_w, num_heads, bias, border_mask, scale, dropout=0.0, width=None
-):
+) -> torch.Tensor:
     """The shifted windows of qkv (3, B, H, W, C), not rolled: the same result as rolling
     by (-shift_h, -shift_w), attending with the full mask and rolling back. A window that
     does not wrap around is a plain window at an offset, its mask all zero, so only the

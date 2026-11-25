@@ -9,25 +9,24 @@ from torch.nn import functional as F
 from einops import rearrange
 from einops.layers.torch import Rearrange
 
+from ..._shared.padded_norm import KernelLayerNorm
 from ..._shared.timm import DropPath, trunc_normal_
+from ..._shared.execution_checks import is_graph_export
 
 from .attention import (
-    in_migraphx_export,
     pad_heads,
     window_attention,
 )
 from .inference import (
-    Derived as _Derived,
-    add_into as _sum,
+    InferenceCacheModule,
+    add_into,
     border_window_mask,
     img2windows,
     shifted_window_attention,
     shifted_window_mask,
     windows2img,
-    padded_rows as _padded_rows,
-    traced as _traced
+    padded_rows,
 )
-from ..._shared.padded_norm import KernelLayerNorm
 
 
 def _unit_length(x):
@@ -51,7 +50,7 @@ def _row_gram(q, k, H, W):
     return rows.sum(2, dtype=wide).to(q.dtype)
 
 
-class SpatialGate(_Derived):
+class SpatialGate(InferenceCacheModule):
     """Spatial-Gate.
     Args:
         dim (int): Half of input channels.
@@ -68,7 +67,7 @@ class SpatialGate(_Derived):
         # Split
         x1, x2 = x.chunk(2, dim=-1)
         B, _N, C = x.shape
-        if not _traced():
+        if not is_graph_export():
             # channels last: the convolution reads and writes the tokens where they are
             x2 = self.norm(x2).reshape(B, H, W, C // 2).permute(0, 3, 1, 2)
             return x1 * self.run_conv("conv", self.conv, x2).permute(0, 2, 3, 1).flatten(1, 2)
@@ -168,7 +167,7 @@ class DynamicPosBias(nn.Module):
         return pos
 
 
-class Spatial_Attention(_Derived):
+class Spatial_Attention(InferenceCacheModule):
     """Spatial Window Self-Attention.
     It supports rectangle window (containing square window).
     Args:
@@ -242,7 +241,7 @@ class Spatial_Attention(_Derived):
     def cached_bias(self):
         """relative_position_bias, computed once: its input is constant, so in inference it
         changes only with the weights, the device or the type."""
-        if _traced():
+        if is_graph_export():
             return self.relative_position_bias()
         return self.keep("bias", self.relative_position_bias)
 
@@ -319,7 +318,7 @@ def _spatial_map(attention, x):
     return attention.run_conv("spatial 1", conv_1, activation(x))
 
 
-class Adaptive_Spatial_Attention(_Derived):
+class Adaptive_Spatial_Attention(InferenceCacheModule):
     # The implementation builds on CAT code https://github.com/Zhengchen1999/CAT
     """Adaptive Spatial Self-Attention
     Args:
@@ -472,8 +471,8 @@ class Adaptive_Spatial_Attention(_Derived):
         Input: x: (B, H*W, C), H, W
         Output: x: (B, H*W, C)
         """
-        if _traced():
-            return self.forward_traced(x, H, W)
+        if is_graph_export():
+            return self.forward_export(x, H, W)
         B, L, C = x.shape
         assert L == H * W, "flatten img_tokens has wrong size"
 
@@ -486,7 +485,7 @@ class Adaptive_Spatial_Attention(_Derived):
             qkv = pad_heads(self.qkv(x).reshape(B, H, W, 3, self.num_heads, -1))
         else:
             weight, bias = self.keep(
-                "qkv", lambda: _padded_rows(self.qkv, self.num_heads, d, width)
+                "qkv", lambda: padded_rows(self.qkv, self.num_heads, d, width)
             )
             qkv = F.linear(x, weight, bias).reshape(B, H, W, 3, self.num_heads, width)
         # V without partition, channels last
@@ -573,14 +572,14 @@ class Adaptive_Spatial_Attention(_Derived):
         # S-I
         conv_x = (torch.sigmoid(spatial_map) * conv_x).permute(0, 2, 3, 1)
 
-        x = _sum(conv_x, attened_x).flatten(1, 2)
+        x = add_into(conv_x, attened_x).flatten(1, 2)
 
         x = self.proj(x)
         x = self.proj_drop(x)
 
         return x
 
-    def forward_traced(self, x, H, W):
+    def forward_export(self, x, H, W):
         B, L, C = x.shape
         assert L == H * W, "flatten img_tokens has wrong size"
 
@@ -678,7 +677,7 @@ class Adaptive_Spatial_Attention(_Derived):
         return x
 
 
-class Adaptive_Channel_Attention(_Derived):
+class Adaptive_Channel_Attention(InferenceCacheModule):
     # The implementation builds on XCiT code https://github.com/facebookresearch/xcit
     """Adaptive Channel Self-Attention
     Args:
@@ -732,8 +731,8 @@ class Adaptive_Channel_Attention(_Derived):
         Input: x: (B, H*W, C), H, W
         Output: x: (B, H*W, C)
         """
-        if _traced():
-            return self.forward_traced(x, H, W)
+        if is_graph_export():
+            return self.forward_export(x, H, W)
         B, N, C = x.shape
         tokens = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
         qkv = tokens.permute(2, 0, 3, 1, 4)
@@ -753,12 +752,13 @@ class Adaptive_Channel_Attention(_Derived):
         attened_x = attened_x * torch.sigmoid(spatial_map)
         conv_x = (conv_x * torch.sigmoid(channel_map)).permute(0, 2, 3, 1).flatten(1, 2)
 
-        x = self.proj(_sum(conv_x, attened_x))
+        x = self.proj(add_into(conv_x, attened_x))
         x = self.proj_drop(x)
 
         return x
 
-    def forward_traced(self, x, H, W):
+    def forward_export(self, x, H, W):
+        """"Reference path for exported graphs: channels first, plain ops, fp32 normalization under fp16"""
         B, N, C = x.shape
         qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads)
         qkv = qkv.permute(2, 0, 3, 1, 4)
@@ -773,12 +773,12 @@ class Adaptive_Channel_Attention(_Derived):
         # Each norm sums the squares of every token (65,536 at 256x256), which fp16
         # overflows when an exported graph computes it in fp16; like PyTorch's own
         # kernels, normalize in fp32, then cast back
-        half = q.dtype == torch.float16
-        if half:
+        is_fp16 = q.dtype == torch.float16
+        if is_fp16:
             q, k = q.float(), k.float()
         q = torch.nn.functional.normalize(q, dim=-1)
         k = torch.nn.functional.normalize(k, dim=-1)
-        if half:
+        if is_fp16:
             q, k = q.half(), k.half()
 
         attn = (q @ k.transpose(-2, -1)) * self.temperature
@@ -786,12 +786,7 @@ class Adaptive_Channel_Attention(_Derived):
         attn = self.attn_drop(attn)
 
         # attention output
-        if in_migraphx_export():
-            # transposed, which MIGraphX does not fuse into one attention kernel
-            attened_x = v.transpose(-2, -1) @ attn.transpose(-2, -1)
-            attened_x = attened_x.permute(0, 2, 1, 3).reshape(B, N, C)
-        else:
-            attened_x = (attn @ v).permute(0, 3, 1, 2).reshape(B, N, C)
+        attened_x = (attn @ v).permute(0, 3, 1, 2).reshape(B, N, C)
 
         # convolution output
         conv_x = self.dwconv(v_)
@@ -887,12 +882,12 @@ class DATB(nn.Module):
         Output: x: (B, H*W, C)
         """
         H, W = x_size
-        if _traced():
+        if is_graph_export():
             x = x + self.drop_path(self.attn(self.norm1(x), H, W))
             x = x + self.drop_path(self.ffn(self.norm2(x), H, W))
             return x
-        x = _sum(x, self.drop_path(self.attn(self.norm1(x), H, W)))
-        return _sum(x, self.drop_path(self.ffn(self.norm2(x), H, W)))
+        x = add_into(x, self.drop_path(self.attn(self.norm1(x), H, W)))
+        return add_into(x, self.drop_path(self.ffn(self.norm2(x), H, W)))
 
 
 class ResidualGroup(nn.Module):
@@ -984,7 +979,7 @@ class ResidualGroup(nn.Module):
                 x = checkpoint.checkpoint(blk, x, x_size)
             else:
                 x = blk(x, x_size)
-        if _traced():
+        if is_graph_export():
             x = rearrange(x, "b (h w) c -> b c h w", h=H, w=W)
             x = self.conv(x)
             x = rearrange(x, "b c h w -> b (h w) c")
@@ -992,7 +987,7 @@ class ResidualGroup(nn.Module):
             # channels last: the convolution reads and writes the tokens where they are
             B, _, C = x.shape
             x = self.conv(x.reshape(B, H, W, C).permute(0, 3, 1, 2))
-            return _sum(res, x.permute(0, 2, 3, 1).flatten(1, 2))
+            return add_into(res, x.permute(0, 2, 3, 1).flatten(1, 2))
         x = res + x
 
         return x

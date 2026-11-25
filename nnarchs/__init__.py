@@ -11,6 +11,16 @@ if not is_cuda_available():
 if not is_tensorrt_available():
     print("Warning: no CUDA device detected, tensorRT is not available")
 
+
+# Triton 3.9 enables FP fusion (a*b + c -> single FMA instruction) by default,
+# but Triton 3.10 will disable it by default. Setting this to "1" keeps the
+# current behavior: slightly faster kernels, a single rounding step per FMA,
+# and identical outputs after upgrading. Results may differ from a non-fused
+# reference by tiny rounding errors. Also silences the Triton warning
+import os
+os.environ["TRITON_DEFAULT_FP_FUSION"] = "1"
+
+
 from .core import nn_lib as nnlib
 
 from .model import (

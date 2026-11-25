@@ -12,29 +12,19 @@ Triton is optional: without it, AVAILABLE is False and the callers' PyTorch path
 """
 
 from __future__ import annotations
-import torch
-from torch import nn
 from nnarchs.logger import nnlogger
 
-from ..._shared.hip import (
-    from_triton,
-    is_depthwise_3x3,
-    plain_inference,
-)
+import torch
+from torch import nn
 
-try:
-    import triton
-    import triton.language as tl
-except ImportError:
-    AVAILABLE = False
-else:
-    AVAILABLE = True
-
+from ..._shared.convolution_utils import is_depthwise_3x3
+from ..._shared.execution_checks import can_use_custom_kernel
+from ..._shared.triton_utils import TRITON_AVAILABLE, from_triton, tl, triton
 
 # A kernel that fails to compile or launch turns this off for the rest of the process.
-TOKEN_DWCONV = AVAILABLE
+TOKEN_DWCONV = TRITON_AVAILABLE
 
-if AVAILABLE:
+if TRITON_AVAILABLE:
 
     @triton.jit
     def _token_dwconv(
@@ -81,12 +71,11 @@ if AVAILABLE:
 
 def usable(x: torch.Tensor, conv: nn.Module) -> bool:
     """Whether the kernel may run conv on the tokens x: plain eager inference
-    (plain_inference) on an NVIDIA GPU, FP16 or BF16 tokens contiguous, and conv a plain
+    (can_use_custom_kernel) on an NVIDIA GPU, FP16 or BF16 tokens contiguous, and conv a plain
     depthwise 3x3 convolution without bias over x's channels, of x's type."""
     return (
         TOKEN_DWCONV
         and x.is_cuda
-        and torch.version.hip is None
         and x.dtype in (torch.float16, torch.bfloat16)
         and x.dim() == 3
         and x.is_contiguous()
@@ -95,7 +84,7 @@ def usable(x: torch.Tensor, conv: nn.Module) -> bool:
         and conv.bias is None
         and conv.weight.dtype == x.dtype
         and conv.weight.is_contiguous()
-        and plain_inference(x, conv)
+        and can_use_custom_kernel(x, conv)
     )
 
 
